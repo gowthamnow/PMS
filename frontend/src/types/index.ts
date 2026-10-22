@@ -1,0 +1,230 @@
+export type UserRole = 'ADMIN' | 'PROJECT_MANAGER' | 'ENGINEER';
+export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'ARCHIVED';
+export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'BLOCKED' | 'DONE';
+
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+  last_login?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  objectives?: string;
+  status: ProjectStatus;
+  priority: Priority;
+  start_date?: string;
+  target_date?: string;
+  created_by: string;
+  created_at: string;
+  member_count?: number;
+  task_count?: number;
+  completed_task_count?: number;
+  project_manager?: User;
+}
+
+export interface ProjectMember {
+  id: string;
+  project_id: string;
+  user_id: string;
+  role: string;
+  joined_at: string;
+  user: User;
+}
+
+export interface Task {
+  id: string;
+  project_id: string;
+  task_number: number;
+  title: string;
+  description?: string;
+  acceptance_criteria?: string;
+  status: TaskStatus;
+  priority: Priority;
+  assignee_id?: string;
+  assignee?: User;
+  creator_id: string;
+  reviewer_id?: string;
+  reviewer?: User;
+  estimated_hours?: number;
+  logged_hours?: number;
+  start_date?: string;
+  due_date?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+  git_refs?: GitRef[];
+  comment_count?: number;
+  project?: Project;
+}
+
+export interface GitRef {
+  type: 'commit' | 'pr';
+  ref: string;
+  url?: string;
+  message?: string;
+  author?: string;
+  timestamp?: string;
+}
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  user_id: string;
+  user?: User;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  is_edited: boolean;
+}
+
+export interface Attachment {
+  id: string;
+  task_id: string;
+  project_id: string;
+  filename: string;
+  file_size: number;
+  content_type: string;
+  created_at: string;
+  user?: User;
+}
+
+export interface TimeEntry {
+  id: string;
+  task_id: string;
+  project_id: string;
+  user_id: string;
+  user?: User;
+  task?: Task;
+  work_date: string;
+  duration_hours: number;
+  description?: string;
+  created_at: string;
+}
+
+export interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  is_read: boolean;
+  related_task_id?: string;
+  related_project_id?: string;
+  created_at: string;
+}
+
+export interface GiteaRepo {
+  id: string;
+  project_id: string;
+  repo_full_name: string;
+  repo_url: string;
+  default_branch: string;
+  is_active: boolean;
+  last_synced_at?: string;
+}
+
+export interface GiteaCommit {
+  id: string;
+  sha: string;
+  message: string;
+  author: string;
+  author_email?: string;
+  timestamp: string;
+  url?: string;
+}
+
+export interface GiteaPullRequest {
+  id: string;
+  number: number;
+  title: string;
+  state: 'open' | 'closed' | 'merged';
+  author: string;
+  updated_at: string;
+  url?: string;
+}
+
+export interface GiteaBranch {
+  name: string;
+  commit_sha: string;
+  is_default: boolean;
+}
+
+export interface ActivityItem {
+  id: string;
+  type: 'task_created' | 'task_updated' | 'comment_added' | 'git_push' | 'pr_opened' | 'member_added';
+  user: User;
+  message: string;
+  created_at: string;
+  task_id?: string;
+  project_id?: string;
+}
+
+export interface DashboardStats {
+  total_projects: number;
+  active_projects: number;
+  tasks_by_status: Record<TaskStatus, number>;
+  overdue_tasks: number;
+  upcoming_deadlines: Task[];
+  workload_by_user: WorkloadItem[];
+  hours_logged_this_week: number;
+}
+
+export interface WorkloadItem {
+  user_id?: string;
+  username?: string;
+  full_name?: string;
+  role?: string;
+  email?: string;
+  user?: User;
+  todo: number;
+  in_progress: number;
+  in_review: number;
+  blocked: number;
+  done: number;
+  total?: number;
+  total_tasks?: number;
+  hours_this_week: number;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface StorageQuota {
+  used_bytes: number;
+  quota_bytes: number;
+  used_percentage: number;
+  total_files: number;
+}
+
+export interface SystemInfo {
+  version: string;
+  environment: string;
+  database_status: 'healthy' | 'unhealthy';
+  uptime_seconds: number;
+  storage: StorageQuota;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  user_id?: string;
+  user_name?: string;
+  action: string;
+  resource_type: string;
+  resource_id?: string;
+  details?: string;
+  ip_address?: string;
+  created_at: string;
+}

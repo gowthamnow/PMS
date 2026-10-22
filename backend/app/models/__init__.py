@@ -1,0 +1,49 @@
+from app.database import Base
+from app.models.audit import AuditLog
+from app.models.gitea import GiteaEvent, GiteaRepo
+from app.models.milestone import Milestone, MilestoneStatus
+from app.models.notification import Notification, NotificationType
+from app.models.project import (
+    Project,
+    ProjectMember,
+    ProjectPriority,
+    ProjectRole,
+    ProjectStatus,
+)
+from app.models.task import (
+    DependencyType,
+    Task,
+    TaskAttachment,
+    TaskComment,
+    TaskDependency,
+    TaskPriority,
+    TaskStatus,
+)
+from app.models.time_entry import TimeEntry
+from app.models.user import User, UserRole
+
+__all__ = [
+    "Base",
+    "User",
+    "UserRole",
+    "Project",
+    "ProjectMember",
+    "ProjectRole",
+    "ProjectStatus",
+    "ProjectPriority",
+    "Task",
+    "TaskComment",
+    "TaskAttachment",
+    "TaskDependency",
+    "TaskStatus",
+    "TaskPriority",
+    "DependencyType",
+    "Milestone",
+    "MilestoneStatus",
+    "TimeEntry",
+    "Notification",
+    "NotificationType",
+    "GiteaRepo",
+    "GiteaEvent",
+    "AuditLog",
+]
