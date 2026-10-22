@@ -53,7 +53,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
 
       {/* Task Number */}
       <td className="w-24 px-4 py-3 font-mono font-semibold text-text-muted group-hover:text-copper-700 whitespace-nowrap">
-        #ENG-{task.task_number.toString().padStart(3, '0')}
+        #ENG-{task.task_number ? task.task_number.toString().padStart(3, '0') : (task.id ? task.id.slice(0, 6) : '000')}
       </td>
 
       {/* Title */}

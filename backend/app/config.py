@@ -7,7 +7,7 @@ class Settings(BaseSettings):
 
     # Security & Auth
     SECRET_KEY: str = "change_this_to_a_super_secret_cryptographically_secure_random_key_min_32_chars"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
     ALGORITHM: str = "HS256"
     APP_VERSION: str = "1.0.0"
 
@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Gitea Integration
     GITEA_BASE_URL: str = "http://localhost:3001"
     GITEA_ADMIN_TOKEN: str = ""
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = "787577822859-ghj33lfvj6rlj0s151qd3kus7bc49kbr.apps.googleusercontent.com"
 
     # Bootstrap Initial Admin
     FIRST_ADMIN_EMAIL: str = "admin@example.com"

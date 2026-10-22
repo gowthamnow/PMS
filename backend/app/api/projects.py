@@ -1,7 +1,10 @@
 import math
+import os
 import uuid
+import logging
 from typing import Any, Optional
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+from app.config import settings
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -21,9 +24,11 @@ from app.models.project import (
     ProjectRole,
     ProjectStatus,
 )
+from app.models.notification import NotificationType
 from app.models.task import Task, TaskStatus
 from app.models.time_entry import TimeEntry
 from app.models.user import User, UserRole
+from app.models.workspace import Workspace
 from app.schemas.project import (
     ProjectCreate,
     ProjectMemberCreate,
@@ -34,6 +39,10 @@ from app.schemas.project import (
     ProjectUpdate,
 )
 from app.services.audit_service import log_audit
+from app.services.notification_service import create_notification
+from app.services.email_service import build_project_startup_email, send_email
+
+logger = logging.getLogger("projects")
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -44,18 +53,30 @@ async def list_projects(
     page_size: int = Query(20, ge=1, le=100),
     status: Optional[ProjectStatus] = None,
     priority: Optional[ProjectPriority] = None,
+    workspace_id: Optional[uuid.UUID] = Query(None),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Project).options(
-        selectinload(Project.members).selectinload(ProjectMember.user)
+        selectinload(Project.members).selectinload(ProjectMember.user),
+        selectinload(Project.workspace),
     )
     count_query = select(func.count(func.distinct(Project.id)))
 
-    # If not admin, only show projects where current_user is a member
+    # If not admin, only show projects where current_user is a member and belongs to their workspace
     if current_user.role != UserRole.ADMIN:
+        if current_user.workspace_id:
+            query = query.where(Project.workspace_id == current_user.workspace_id)
+            count_query = count_query.where(Project.workspace_id == current_user.workspace_id)
+        else:
+            query = query.where(Project.id == None)
+            count_query = count_query.where(Project.id == None)
         query = query.join(Project.members).where(ProjectMember.user_id == current_user.id)
         count_query = count_query.join(Project.members).where(ProjectMember.user_id == current_user.id)
+    else:
+        if workspace_id:
+            query = query.where(Project.workspace_id == workspace_id)
+            count_query = count_query.where(Project.workspace_id == workspace_id)
 
     if status:
         query = query.where(Project.status == status)
@@ -91,6 +112,16 @@ async def create_project(
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    target_ws_id = project_in.workspace_id
+    if not target_ws_id:
+        if current_user.workspace_id:
+            target_ws_id = current_user.workspace_id
+        else:
+            ws_res = await db.execute(select(Workspace).order_by(Workspace.created_at.asc()).limit(1))
+            first_ws = ws_res.scalars().first()
+            if first_ws:
+                target_ws_id = first_ws.id
+
     project_id = uuid.uuid4()
     project = Project(
         id=project_id,
@@ -103,6 +134,7 @@ async def create_project(
         target_date=project_in.target_date,
         actual_end_date=project_in.actual_end_date,
         created_by=current_user.id,
+        workspace_id=target_ws_id,
     )
     db.add(project)
 
@@ -120,7 +152,10 @@ async def create_project(
     # Re-fetch with relationships
     stmt = (
         select(Project)
-        .options(selectinload(Project.members).selectinload(ProjectMember.user))
+        .options(
+            selectinload(Project.members).selectinload(ProjectMember.user),
+            selectinload(Project.workspace),
+        )
         .where(Project.id == project_id)
     )
     res = await db.execute(stmt)
@@ -133,7 +168,7 @@ async def create_project(
         action="CREATE_PROJECT",
         resource_type="PROJECT",
         resource_id=str(project.id),
-        changes={"name": project.name, "status": project.status.value},
+        changes={"name": project.name, "status": project.status.value, "workspace_id": str(target_ws_id) if target_ws_id else None},
         ip_address=client_ip,
     )
 
@@ -148,7 +183,10 @@ async def get_project(
 ):
     stmt = (
         select(Project)
-        .options(selectinload(Project.members).selectinload(ProjectMember.user))
+        .options(
+            selectinload(Project.members).selectinload(ProjectMember.user),
+            selectinload(Project.workspace),
+        )
         .where(Project.id == project_id)
     )
     result = await db.execute(stmt)
@@ -172,7 +210,10 @@ async def update_project(
 
     stmt = (
         select(Project)
-        .options(selectinload(Project.members).selectinload(ProjectMember.user))
+        .options(
+            selectinload(Project.members).selectinload(ProjectMember.user),
+            selectinload(Project.workspace),
+        )
         .where(Project.id == project_id)
     )
     res = await db.execute(stmt)
@@ -207,11 +248,10 @@ async def delete_project(
     project_id: uuid.UUID,
     request: Request,
     current_user: User = Depends(get_current_active_user),
-    member: ProjectMember = Depends(get_project_member),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role != UserRole.ADMIN and member.role != ProjectRole.MANAGER:
-        raise ForbiddenError("Only project managers or admins can delete projects")
+    if current_user.role != UserRole.ADMIN:
+        raise ForbiddenError("Only administrators can delete projects")
 
     stmt = select(Project).where(Project.id == project_id)
     res = await db.execute(stmt)
@@ -294,6 +334,63 @@ async def add_project_member(
     )
     res = await db.execute(stmt)
     full_member = res.scalar_one()
+
+    # Fetch project details for startup notification and email
+    proj_stmt = (
+        select(Project)
+        .options(selectinload(Project.workspace))
+        .where(Project.id == project_id)
+    )
+    proj_res = await db.execute(proj_stmt)
+    project = proj_res.scalar_one_or_none()
+
+    if project:
+        # Create in-app notification
+        await create_notification(
+            db=db,
+            user_id=target_user.id,
+            type=NotificationType.PROJECT_UPDATED,
+            title=f"🚀 Project Startup: Added to {project.name}",
+            body=f"You have been assigned to '{project.name}' as {member_in.role.value} by {current_user.full_name}.",
+            related_project_id=project_id,
+        )
+        await db.commit()
+
+        # Send Project Startup Email to member
+        if target_user.email:
+            try:
+                role_val = member_in.role.value if hasattr(member_in.role, "value") else str(member_in.role)
+                assigned_by = f"{current_user.full_name} ({current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)})"
+                priority_val = project.priority.value if hasattr(project.priority, "value") else str(project.priority)
+                status_val = project.status.value if hasattr(project.status, "value") else str(project.status)
+                start_val = project.start_date.isoformat() if project.start_date else None
+                target_val = project.target_date.isoformat() if project.target_date else None
+                workspace_val = project.workspace.name if project.workspace else None
+
+                subj, txt, html = build_project_startup_email(
+                    member_name=target_user.full_name or target_user.username,
+                    member_email=target_user.email,
+                    project_name=project.name,
+                    project_role=role_val,
+                    assigned_by_name=assigned_by,
+                    project_id=str(project_id),
+                    description=project.description,
+                    objectives=project.objectives,
+                    priority=priority_val,
+                    status=status_val,
+                    start_date=start_val,
+                    target_date=target_val,
+                    workspace_name=workspace_val,
+                )
+                send_email(
+                    to_email=target_user.email,
+                    subject=subj,
+                    body_text=txt,
+                    body_html=html,
+                )
+                logger.info(f"Project startup email sent to {target_user.email} for project {project.name}")
+            except Exception as e:
+                logger.error(f"Failed to dispatch project startup email to {target_user.email}: {e}")
 
     client_ip = request.client.host if request.client else None
     await log_audit(
@@ -432,3 +529,68 @@ async def get_project_stats(
         tasks_by_status=tasks_by_status,
         total_hours_logged=total_hours_logged,
     )
+
+
+@router.post("/{project_id}/image")
+async def upload_project_image(
+    project_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_admin_or_pm),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload a cover photo or schematic banner for a project.
+    """
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise ValidationError("Only JPEG, PNG, WEBP, or GIF image files are allowed for project covers.")
+
+    res = await db.execute(select(Project).where(Project.id == project_id))
+    project = res.scalar_one_or_none()
+    if not project:
+        raise NotFoundError("Project not found")
+
+    if current_user.role != UserRole.ADMIN:
+        if current_user.workspace_id and project.workspace_id and current_user.workspace_id != project.workspace_id:
+            raise ForbiddenError("Access denied: Project does not belong to your assigned workspace")
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise ValidationError("Project image size must not exceed 10MB.")
+
+    # Validate image magic bytes
+    is_valid_image = False
+    if content.startswith(b"\xff\xd8\xff"):  # JPEG
+        is_valid_image = True
+    elif content.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG
+        is_valid_image = True
+    elif content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):  # GIF
+        is_valid_image = True
+    elif content.startswith(b"RIFF") and len(content) > 12 and content[8:12] == b"WEBP":  # WEBP
+        is_valid_image = True
+
+    if not is_valid_image:
+        raise ValidationError("Uploaded file is not a valid image file")
+
+    project_img_dir = os.path.join(settings.ATTACHMENT_STORAGE_PATH, "projects")
+    os.makedirs(project_img_dir, exist_ok=True)
+
+    ext = file.filename.split(".")[-1].lower() if file.filename and "." in file.filename else "jpg"
+    if ext not in ["jpg", "jpeg", "png", "webp", "gif"]:
+        ext = "jpg"
+    filename = f"project_{project.id}.{ext}"
+    filepath = os.path.join(project_img_dir, filename)
+
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    image_url = f"/api/attachments/projects/{filename}"
+    project.image_url = image_url
+    await db.commit()
+    await db.refresh(project)
+
+    return {
+        "status": "success",
+        "image_url": image_url,
+        "message": "Project image updated successfully",
+    }

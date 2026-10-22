@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import html
 import math
 import re
 import uuid
@@ -12,6 +13,7 @@ from app.api.deps import (
     get_current_active_user,
     get_db,
     get_project_member,
+    require_admin,
 )
 from app.config import settings
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
@@ -41,6 +43,7 @@ from app.services.audit_service import log_audit
 from app.services.email_service import (
     build_evening_push_reminder_email,
     build_morning_login_reminder_email,
+    build_project_team_pending_reminder_email,
     build_stale_task_email,
     send_email,
 )
@@ -435,6 +438,19 @@ async def delete_task(
 ):
     task = await check_task_access(task_id, current_user, db)
 
+    # Restrict deletion to Admin, Project Manager, or the Task Creator
+    if current_user.role != UserRole.ADMIN:
+        mem_stmt = select(ProjectMember).where(
+            ProjectMember.project_id == task.project_id,
+            ProjectMember.user_id == current_user.id,
+        )
+        mem_res = await db.execute(mem_stmt)
+        mem = mem_res.scalar_one_or_none()
+        is_manager = mem and mem.role == ProjectRole.MANAGER
+        is_creator = task.creator_id == current_user.id
+        if not (is_manager or is_creator):
+            raise ForbiddenError("Only project managers, task creators, or administrators can delete tasks")
+
     task.is_deleted = True
     await db.commit()
 
@@ -638,153 +654,266 @@ async def check_stale_task_notifications(
     request: Request,
     hours_threshold: Optional[int] = Query(None, ge=1, le=720),
     force_all: bool = Query(False, description="If true, reminds all pending tasks regardless of update timestamp"),
+    project_id: Optional[uuid.UUID] = Query(None, description="Optional project ID to filter reminders for a specific project"),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Scans for pending engineering tasks (TODO, IN_PROGRESS, IN_REVIEW, BLOCKED)
-    with no recent progress updates.
-    Sends an automated notification and email to the assigned engineer,
-    with the Project Manager(s) in CC, directing them to record their daily updates.
+    Scans for pending engineering tasks (TODO, IN_PROGRESS, IN_REVIEW, BLOCKED).
+    Dispatches reminder email simultaneously to ALL assigned engineers and project team members in TO,
+    with Project Managers in CC, directing them to record daily progress and timesheets.
     """
     threshold_hours = hours_threshold if hours_threshold is not None else settings.STALE_TASK_HOURS_THRESHOLD
     cutoff_time = datetime.now(timezone.utc) - timedelta(hours=threshold_hours)
 
-    # Find pending tasks that have an assignee
-    query = (
-        select(Task)
-        .options(
-            selectinload(Task.assignee),
-            selectinload(Task.project).selectinload(Project.members).selectinload(ProjectMember.user),
+    # 1. Project-specific reminder (e.g. from Project Detail page "Send Pending Reminders")
+    if project_id:
+        proj_stmt = (
+            select(Project)
+            .options(selectinload(Project.members).selectinload(ProjectMember.user))
+            .where(Project.id == project_id)
         )
-        .where(
-            Task.status != TaskStatus.DONE,
-            Task.assignee_id.isnot(None),
+        proj_res = await db.execute(proj_stmt)
+        project = proj_res.scalar_one_or_none()
+        if not project:
+            raise NotFoundError("Project not found")
+
+        tasks_stmt = (
+            select(Task)
+            .options(selectinload(Task.assignee))
+            .where(Task.project_id == project_id, Task.status != TaskStatus.DONE)
         )
-    )
+        if not force_all:
+            tasks_stmt = tasks_stmt.where(or_(Task.updated_at == None, Task.updated_at <= cutoff_time))
 
-    if not force_all:
-        query = query.where(Task.updated_at <= cutoff_time)
+        pending_tasks = (await db.execute(tasks_stmt)).scalars().all()
 
-    res = await db.execute(query)
-    stale_tasks = res.scalars().all()
+        if not pending_tasks:
+            return {
+                "status": "success",
+                "message": "No pending or stale tasks in this project.",
+                "reminders_sent": 0,
+                "recipients": [],
+                "cc_recipients": [],
+            }
 
-    processed_tasks = []
-    reminders_sent = 0
+        # Collect TO recipients: all project members with role MEMBER, plus all assignees of pending tasks
+        to_emails: list[str] = []
+        to_names: list[str] = []
+        to_user_ids: list[uuid.UUID] = []
 
-    for task in stale_tasks:
-        if not task.assignee or not task.assignee.email:
-            continue
+        for m in project.members:
+            if m.role == ProjectRole.MEMBER and m.user and m.user.email and m.user.is_active:
+                if m.user.email not in to_emails:
+                    to_emails.append(m.user.email)
+                    to_names.append(m.user.full_name or m.user.username)
+                    to_user_ids.append(m.user.id)
 
-        # Collect project managers
-        manager_emails = []
-        manager_names = []
-        if task.project:
-            for member in task.project.members:
-                if member.role == ProjectRole.MANAGER and member.user and member.user.email:
-                    if member.user.email not in manager_emails and member.user.email != task.assignee.email:
-                        manager_emails.append(member.user.email)
-                        manager_names.append(member.user.full_name or member.user.username)
+        for t in pending_tasks:
+            if t.assignee and t.assignee.email and t.assignee.is_active:
+                if t.assignee.email not in to_emails:
+                    to_emails.append(t.assignee.email)
+                    to_names.append(t.assignee.full_name or t.assignee.username)
+                    to_user_ids.append(t.assignee.id)
 
-        # Calculate inactivity days
-        days_inactive = max(1, (datetime.now(timezone.utc) - task.updated_at).days) if task.updated_at else 1
+        # Fallback if no members are marked as MEMBER: include all assignees or active members
+        if not to_emails:
+            for m in project.members:
+                if m.user and m.user.email and m.user.is_active:
+                    to_emails.append(m.user.email)
+                    to_names.append(m.user.full_name or m.user.username)
+                    to_user_ids.append(m.user.id)
 
-        # Build email content
-        subject, body_text, body_html = build_stale_task_email(
-            assignee_name=task.assignee.full_name or task.assignee.username,
-            task_number=task.task_number,
-            task_title=task.title,
-            project_name=task.project.name if task.project else "Engineering Project",
-            status=task.status.value,
-            priority=task.priority.value,
-            due_date=str(task.due_date) if task.due_date else None,
-            task_id=str(task.id),
+        # Collect CC recipients: project managers
+        cc_emails: list[str] = []
+        manager_names: list[str] = []
+        for m in project.members:
+            if m.role == ProjectRole.MANAGER and m.user and m.user.email and m.user.is_active:
+                if m.user.email not in cc_emails and m.user.email not in to_emails:
+                    cc_emails.append(m.user.email)
+                    manager_names.append(m.user.full_name or m.user.username)
+
+        # Ensure current user (e.g. manager triggering this) is in CC if not in TO
+        if current_user.email and current_user.email not in to_emails and current_user.email not in cc_emails:
+            cc_emails.append(current_user.email)
+            manager_names.append(current_user.full_name or current_user.username)
+
+        task_summaries = [
+            {
+                "number": t.task_number,
+                "title": t.title,
+                "status": t.status.value,
+                "priority": t.priority.value,
+                "assignee_name": t.assignee.full_name or t.assignee.username if t.assignee else "Unassigned",
+                "due_date": str(t.due_date) if t.due_date else "Not set",
+            }
+            for t in pending_tasks
+        ]
+
+        subject, body_text, body_html = build_project_team_pending_reminder_email(
+            project_name=project.name,
+            recipient_names=to_names,
+            tasks=task_summaries,
             manager_names=manager_names,
-            days_since_update=days_inactive,
+            project_id=str(project.id),
         )
 
-        # Dispatch email
         email_sent = send_email(
-            to_email=task.assignee.email,
+            to_email=to_emails,
             subject=subject,
             body_text=body_text,
             body_html=body_html,
-            cc_emails=manager_emails,
+            cc_emails=cc_emails,
         )
 
-        # Create in-app notification for the assignee
-        await create_notification(
-            db=db,
-            user_id=task.assignee.id,
-            type=NotificationType.TASK_OVERDUE,
-            title="Daily Update Required: Pending Task",
-            body=(
-                f"Task #{task.task_number} '{task.title}' has no recent updates. "
-                f"Please document your daily engineering progress, log hours, or update task status."
-            ),
-            related_task_id=task.id,
-            related_project_id=task.project_id,
-        )
+        # In-app notifications
+        for uid in to_user_ids:
+            await create_notification(
+                db=db,
+                user_id=uid,
+                type=NotificationType.TASK_OVERDUE,
+                title=f"Pending Tasks Reminder: {project.name}",
+                body=f"You have {len(pending_tasks)} pending task(s) requiring daily updates in project '{project.name}'.",
+                related_project_id=project.id,
+            )
 
-        # Create in-app notification for project managers
-        if task.project:
-            for member in task.project.members:
-                if member.role == ProjectRole.MANAGER and member.user_id != task.assignee.id:
-                    await create_notification(
-                        db=db,
-                        user_id=member.user_id,
-                        type=NotificationType.TASK_OVERDUE,
-                        title=f"Pending Task Alert: #{task.task_number}",
-                        body=(
-                            f"Reminder sent to {task.assignee.full_name} for pending task #{task.task_number} "
-                            f"('{task.title}') in project '{task.project.name}'."
-                        ),
-                        related_task_id=task.id,
-                        related_project_id=task.project_id,
-                    )
-
-        # Audit log
         client_ip = request.client.host if request.client else None
         await log_audit(
             db=db,
             user_id=current_user.id,
-            action="STALE_TASK_REMINDER_SENT",
-            resource_type="TASK",
-            resource_id=str(task.id),
+            action="PROJECT_PENDING_REMINDER_SENT",
+            resource_type="PROJECT",
+            resource_id=str(project.id),
             changes={
-                "task_number": task.task_number,
-                "assignee": task.assignee.username,
-                "assignee_email": task.assignee.email,
-                "manager_ccs": manager_emails,
+                "project_name": project.name,
+                "to_recipients": to_emails,
+                "cc_recipients": cc_emails,
+                "pending_tasks_count": len(pending_tasks),
                 "email_dispatched": email_sent,
             },
             ip_address=client_ip,
         )
 
-        reminders_sent += 1
-        processed_tasks.append({
-            "task_id": str(task.id),
-            "task_number": task.task_number,
-            "title": task.title,
-            "status": task.status.value,
-            "assignee": task.assignee.username,
-            "assignee_email": task.assignee.email,
-            "manager_ccs": manager_emails,
+        return {
+            "status": "success",
+            "project_name": project.name,
+            "reminders_sent": len(to_emails) if email_sent else 0,
+            "pending_tasks_count": len(pending_tasks),
+            "recipients": to_emails,
+            "cc_recipients": cc_emails,
             "email_dispatched": email_sent,
-        })
+        }
+
+    # 2. Global reminder across all projects with pending tasks
+    tasks_stmt = (
+        select(Task)
+        .options(
+            selectinload(Task.assignee),
+            selectinload(Task.project).selectinload(Project.members).selectinload(ProjectMember.user),
+        )
+        .where(Task.status != TaskStatus.DONE)
+    )
+    if not force_all:
+        tasks_stmt = tasks_stmt.where(or_(Task.updated_at == None, Task.updated_at <= cutoff_time))
+
+    stale_tasks = (await db.execute(tasks_stmt)).scalars().all()
+
+    # Group pending tasks by project
+    project_task_map: dict[uuid.UUID, list[Task]] = {}
+    for t in stale_tasks:
+        if t.project:
+            project_task_map.setdefault(t.project_id, []).append(t)
+
+    total_reminders = 0
+    all_notified: list[str] = []
+    all_ccs: list[str] = []
+
+    for pid, p_tasks in project_task_map.items():
+        proj = p_tasks[0].project
+        to_emails = []
+        to_names = []
+        to_user_ids = []
+
+        for m in proj.members:
+            if m.role == ProjectRole.MEMBER and m.user and m.user.email and m.user.is_active:
+                if m.user.email not in to_emails:
+                    to_emails.append(m.user.email)
+                    to_names.append(m.user.full_name or m.user.username)
+                    to_user_ids.append(m.user.id)
+
+        for t in p_tasks:
+            if t.assignee and t.assignee.email and t.assignee.is_active:
+                if t.assignee.email not in to_emails:
+                    to_emails.append(t.assignee.email)
+                    to_names.append(t.assignee.full_name or t.assignee.username)
+                    to_user_ids.append(t.assignee.id)
+
+        if not to_emails:
+            continue
+
+        cc_emails = []
+        manager_names = []
+        for m in proj.members:
+            if m.role == ProjectRole.MANAGER and m.user and m.user.email and m.user.is_active:
+                if m.user.email not in cc_emails and m.user.email not in to_emails:
+                    cc_emails.append(m.user.email)
+                    manager_names.append(m.user.full_name or m.user.username)
+
+        task_summaries = [
+            {
+                "number": t.task_number,
+                "title": t.title,
+                "status": t.status.value,
+                "priority": t.priority.value,
+                "assignee_name": t.assignee.full_name or t.assignee.username if t.assignee else "Unassigned",
+                "due_date": str(t.due_date) if t.due_date else "Not set",
+            }
+            for t in p_tasks
+        ]
+
+        subject, body_text, body_html = build_project_team_pending_reminder_email(
+            project_name=proj.name,
+            recipient_names=to_names,
+            tasks=task_summaries,
+            manager_names=manager_names,
+            project_id=str(proj.id),
+        )
+
+        email_sent = send_email(
+            to_email=to_emails,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            cc_emails=cc_emails,
+        )
+
+        for uid in to_user_ids:
+            await create_notification(
+                db=db,
+                user_id=uid,
+                type=NotificationType.TASK_OVERDUE,
+                title=f"Pending Tasks Reminder: {proj.name}",
+                body=f"You have {len(p_tasks)} pending task(s) requiring daily updates in project '{proj.name}'.",
+                related_project_id=proj.id,
+            )
+
+        if email_sent:
+            total_reminders += len(to_emails)
+            all_notified.extend(to_emails)
+            all_ccs.extend(cc_emails)
 
     return {
         "status": "success",
-        "stale_tasks_count": len(stale_tasks),
-        "reminders_sent": reminders_sent,
-        "processed_tasks": processed_tasks,
+        "reminders_sent": total_reminders,
+        "recipients": list(dict.fromkeys(all_notified)),
+        "cc_recipients": list(dict.fromkeys(all_ccs)),
     }
 
 
 @router.post("/trigger-morning-reminder")
 async def trigger_morning_reminder(
     force_all: bool = Query(False, description="Send reminder even if user already logged in today"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -849,7 +978,7 @@ async def trigger_morning_reminder(
 
 @router.post("/trigger-evening-reminder")
 async def trigger_evening_reminder(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -931,3 +1060,117 @@ async def trigger_evening_reminder(
         "assignees": processed,
     }
 
+
+
+from pydantic import BaseModel
+from app.services.email_service import build_delay_inquiry_email
+
+
+class DelayInquiryRequest(BaseModel):
+    message: Optional[str] = None
+    urgency: Optional[str] = "HIGH"
+
+
+@router.post("/{task_id}/delay-inquiry")
+async def send_delay_inquiry(
+    task_id: uuid.UUID,
+    inquiry_data: DelayInquiryRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Dispatches an official delay explanation inquiry to the assigned engineer.
+    Also logs an audit comment on the task and triggers an in-app notification.
+    """
+    stmt = (
+        select(Task)
+        .options(
+            selectinload(Task.assignee),
+            selectinload(Task.project).selectinload(Project.members).selectinload(ProjectMember.user),
+        )
+        .where(Task.id == task_id)
+    )
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise NotFoundError("Task not found")
+
+    if not task.assignee:
+        raise ValidationError("Cannot send delay inquiry for an unassigned task.")
+
+    # Restrict delay inquiry to Admin or Project Manager of this project
+    if current_user.role != UserRole.ADMIN:
+        mem_stmt = select(ProjectMember).where(
+            ProjectMember.project_id == task.project_id,
+            ProjectMember.user_id == current_user.id,
+        )
+        mem_res = await db.execute(mem_stmt)
+        mem = mem_res.scalar_one_or_none()
+        if not mem or mem.role != ProjectRole.MANAGER:
+            raise ForbiddenError("Only project managers or administrators can issue delay inquiries")
+
+        if current_user.workspace_id and task.project and task.project.workspace_id and current_user.workspace_id != task.project.workspace_id:
+            raise ForbiddenError("Access denied: Project does not belong to your assigned workspace")
+
+    # Collect project managers for CC
+    manager_emails = set()
+    manager_names = set()
+    if task.project:
+        for m in task.project.members:
+            if m.role == ProjectRole.MANAGER and m.user and m.user_id != task.assignee.id:
+                manager_emails.add(m.user.email)
+                manager_names.add(m.user.full_name)
+
+    if current_user.email != task.assignee.email:
+        manager_emails.add(current_user.email)
+        manager_names.add(current_user.full_name)
+
+    due_str = task.due_date.strftime("%Y-%m-%d") if task.due_date else "Not set"
+    subj, txt, html = build_delay_inquiry_email(
+        assignee_name=task.assignee.full_name or task.assignee.username,
+        task_number=task.task_number,
+        task_title=task.title,
+        project_name=task.project.name if task.project else "Engineering Project",
+        status=task.status.value,
+        priority=task.priority.value,
+        due_date=due_str,
+        task_id=str(task.id),
+        sender_name=current_user.full_name,
+        custom_inquiry=inquiry_data.message,
+        manager_names=list(manager_names),
+    )
+
+    email_sent = send_email(
+        to_email=task.assignee.email,
+        subject=subj,
+        body_text=txt,
+        body_html=html,
+        cc_emails=list(manager_emails),
+    )
+
+    inquiry_note = inquiry_data.message or "Please report reason for schedule delay and current technical roadblocks."
+    comment = TaskComment(
+        id=uuid.uuid4(),
+        task_id=task.id,
+        user_id=current_user.id,
+        content=f"⚠️ **[MANAGEMENT DELAY INQUIRY dispatched by {current_user.full_name}]**\n\n{inquiry_note}",
+    )
+    db.add(comment)
+
+    await create_notification(
+        db=db,
+        user_id=task.assignee.id,
+        type=NotificationType.TASK_OVERDUE,
+        title=f"Delay Inquiry on #ENG-{str(task.task_number).zfill(3)}",
+        body=f"{current_user.full_name} has requested an immediate explanation for the delay on task: {task.title}",
+    )
+
+    await db.commit()
+
+    return {
+        "status": "success",
+        "message": f"Delay inquiry dispatched to {task.assignee.full_name} ({task.assignee.email}) with managers in CC.",
+        "email_dispatched": email_sent,
+        "recipient": task.assignee.email,
+        "ccs": list(manager_emails),
+    }

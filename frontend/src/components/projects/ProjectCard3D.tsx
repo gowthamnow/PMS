@@ -1,145 +1,251 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Project } from '../../types';
 import { Badge } from '../ui/Badge';
 import { ProgressBar } from '../ui/ProgressBar';
 import { Avatar } from '../ui/Avatar';
 import { formatDate } from '../../lib/utils';
+import { api } from '../../lib/api';
 import {
-  Cpu,
-  Layers,
   Calendar,
-  Users,
   CheckCircle2,
   ArrowUpRight,
+  Camera,
+  Image as ImageIcon,
+  Upload,
+  Trash2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface ProjectCard3DProps {
   project: Project;
+  onDelete?: (project: Project) => void;
 }
 
-const getProjectTheme = (name: string) => {
-  const lower = name.toLowerCase();
-  if (lower.includes('meter') || lower.includes('power') || lower.includes('energy')) {
-    return {
-      gradient: 'from-amber-500/20 via-orange-500/10 to-transparent',
-      badgeBg: 'bg-amber-100 text-amber-800 border-amber-300',
-      iconColor: 'text-amber-600',
-      circuitColor: '#D97706',
-      tag: 'Hardware & Power',
-    };
+const getStatusAccent = (status: string) => {
+  switch (status) {
+    case 'ACTIVE':
+      return {
+        topBorder: 'border-t-emerald-500',
+        badgeBg: 'bg-emerald-500',
+        textColor: 'text-emerald-700',
+      };
+    case 'PLANNING':
+      return {
+        topBorder: 'border-t-amber-500',
+        badgeBg: 'bg-amber-500',
+        textColor: 'text-amber-700',
+      };
+    case 'ON_HOLD':
+      return {
+        topBorder: 'border-t-orange-500',
+        badgeBg: 'bg-orange-500',
+        textColor: 'text-orange-700',
+      };
+    case 'COMPLETED':
+      return {
+        topBorder: 'border-t-blue-500',
+        badgeBg: 'bg-blue-500',
+        textColor: 'text-blue-700',
+      };
+    default:
+      return {
+        topBorder: 'border-t-slate-400',
+        badgeBg: 'bg-slate-400',
+        textColor: 'text-slate-600',
+      };
   }
-  if (lower.includes('firmware') || lower.includes('embedded') || lower.includes('driver')) {
-    return {
-      gradient: 'from-blue-500/20 via-cyan-500/10 to-transparent',
-      badgeBg: 'bg-blue-100 text-blue-800 border-blue-300',
-      iconColor: 'text-blue-600',
-      circuitColor: '#2563EB',
-      tag: 'Firmware Core',
-    };
-  }
-  if (lower.includes('pcb') || lower.includes('schematic') || lower.includes('board')) {
-    return {
-      gradient: 'from-emerald-500/20 via-teal-500/10 to-transparent',
-      badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-      iconColor: 'text-emerald-600',
-      circuitColor: '#059669',
-      tag: 'PCB & Schematics',
-    };
-  }
-  return {
-    gradient: 'from-slate-500/20 via-indigo-500/10 to-transparent',
-    badgeBg: 'bg-slate-100 text-slate-800 border-slate-300',
-    iconColor: 'text-indigo-600',
-    circuitColor: '#4F46E5',
-    tag: 'Engineering Initiative',
-  };
 };
 
-export const ProjectCard3D: React.FC<ProjectCard3DProps> = ({ project }) => {
+export const ProjectCard3D: React.FC<ProjectCard3DProps> = ({ project, onDelete }) => {
   const navigate = useNavigate();
-  const theme = getProjectTheme(project.name);
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [cardStyle, setCardStyle] = useState<'3d' | 'flat'>(() => {
+    return (localStorage.getItem('pms_card_style') as '3d' | 'flat') || '3d';
+  });
+
+  useEffect(() => {
+    const handleStyleChange = () => {
+      setCardStyle((localStorage.getItem('pms_card_style') as '3d' | 'flat') || '3d');
+    };
+    window.addEventListener('pms_style_change', handleStyleChange);
+    return () => window.removeEventListener('pms_style_change', handleStyleChange);
+  }, []);
+
+  const accent = getStatusAccent(project.status);
 
   const total = project.task_count || 0;
   const done = project.completed_task_count || 0;
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 0;
 
+  const handleImageClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Project image must be under 10MB.');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      await api.projects.uploadProjectImage(project.id, file);
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project cover image updated!');
+    } catch {
+      toast.error('Failed to update project image.');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
   return (
     <div
       onClick={() => navigate(`/projects/${project.id}`)}
-      className="group relative flex flex-col justify-between rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-2xl hover:-translate-y-2 hover:border-amber-400/80 transition-all duration-300 overflow-hidden cursor-pointer p-5 min-h-[300px]"
+      className={`group relative flex flex-col justify-between rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden min-h-[320px] ${
+        cardStyle === '3d'
+          ? `bg-white border-slate-200 border-t-[4px] ${accent.topBorder} shadow-xs hover:shadow-lg hover:border-slate-300 hover:-translate-y-0.5`
+          : 'bg-white border-slate-200 shadow-none hover:border-slate-400'
+      }`}
     >
-      {/* Top Ambient Gradient Layer */}
-      <div
-        className={`absolute inset-x-0 top-0 h-32 bg-gradient-to-b ${theme.gradient} opacity-80 group-hover:opacity-100 transition-opacity pointer-events-none`}
+      {/* Hidden image input for fixing/uploading project picture */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={handleFileChange}
+        onClick={(e) => e.stopPropagation()}
       />
 
-      {/* Decorative Hardware Microcircuit Graphic */}
-      <div className="absolute top-3 right-3 opacity-15 group-hover:opacity-30 transition-opacity pointer-events-none">
-        <svg width="68" height="68" viewBox="0 0 100 100" fill="none">
-          <circle cx="50" cy="50" r="38" stroke={theme.circuitColor} strokeWidth="2" strokeDasharray="4 4" />
-          <path d="M50 20 V35 M50 65 V80 M20 50 H35 M65 50 H80" stroke={theme.circuitColor} strokeWidth="3" />
-          <rect x="42" y="42" width="16" height="16" rx="3" fill={theme.circuitColor} />
-        </svg>
+      {/* Top Space for Project Image / Schematic Preview */}
+      <div className="relative w-full h-32 bg-slate-900 overflow-hidden group/img">
+        {project.image_url ? (
+          <img
+            src={project.image_url}
+            alt={project.name}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-copper-950 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+            {/* Tech grid background */}
+            <div
+              className="absolute inset-0 opacity-15"
+              style={{
+                backgroundImage:
+                  'radial-gradient(circle at 1px 1px, #ffffff 1px, transparent 0)',
+                backgroundSize: '16px 16px',
+              }}
+            />
+            <div className="relative z-10 flex flex-col items-center gap-1.5 text-center">
+              <span className="p-2 rounded-full bg-white/10 backdrop-blur-xs text-copper-400 border border-white/10">
+                <ImageIcon className="w-4 h-4" />
+              </span>
+              <span className="text-[10px] font-mono text-slate-300 tracking-wider uppercase font-semibold">
+                Schematic / Hardware Vault
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Upload / Fix Image Button */}
+        <button
+          type="button"
+          onClick={handleImageClick}
+          disabled={isUploading}
+          title="Fix or upload project image"
+          className="absolute bottom-2 right-2 px-2.5 py-1 rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-[10px] font-medium flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-all border border-white/20 shadow-sm"
+        >
+          <Camera className="w-3 h-3 text-copper-300" />
+          <span>{isUploading ? 'Saving...' : project.image_url ? 'Change Image' : 'Fix Image'}</span>
+        </button>
+
+        {/* Overlay Badges */}
+        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+          <Badge variant="project" value={project.status} size="sm" />
+          <Badge variant="priority" value={project.priority} size="sm" />
+        </div>
+
+        {/* Actions Top Right */}
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+          {onDelete && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(project);
+              }}
+              className="w-6 h-6 rounded-full bg-white/80 backdrop-blur-md flex items-center justify-center text-slate-500 hover:bg-red-600 hover:text-white transition-colors shadow-xs"
+              title="Delete Project"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
+          <div className="w-6 h-6 rounded-full bg-white/80 backdrop-blur-md flex items-center justify-center text-slate-700 group-hover:bg-copper-600 group-hover:text-white transition-colors shadow-xs">
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </div>
+        </div>
       </div>
 
-      {/* Header Section */}
-      <div className="relative z-10 flex flex-col gap-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase border bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm text-text-secondary border-slate-200 shadow-2xs">
-            <Cpu className={`w-3 h-3 ${theme.iconColor}`} />
-            <span>{theme.tag}</span>
-          </span>
+      {/* Main Card Content */}
+      <div className="p-4 flex flex-col flex-1 justify-between gap-3">
+        {/* Title & Description */}
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-slate-900 group-hover:text-copper-700 transition-colors line-clamp-1 leading-snug">
+              {project.name}
+            </h3>
+            {project.workspace_name && (
+              <span className="shrink-0 text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                🏢 {project.workspace_name}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+            {project.description || project.objectives || 'Engineering project deliverable.'}
+          </p>
+        </div>
 
-          <div className="flex items-center gap-1.5">
-            <Badge variant="project" value={project.status} size="sm" />
-            <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-text-muted group-hover:bg-amber-500 group-hover:text-white transition-colors">
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </div>
+        {/* Sprint Progress Section */}
+        <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex flex-col gap-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-medium text-slate-600 flex items-center gap-1 text-[11px]">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Sprint Progress</span>
+            </span>
+            <span className="font-mono font-bold text-slate-800 text-xs">
+              {progressPct}%
+            </span>
+          </div>
+          <ProgressBar value={progressPct} size="sm" showPercentage={false} />
+          <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
+            <span>{done} completed</span>
+            <span>{total} total tasks</span>
           </div>
         </div>
 
-        {/* Project Title */}
-        <div className="mt-1">
-          <h3 className="text-base font-bold text-text-primary group-hover:text-amber-600 transition-colors line-clamp-2 leading-snug">
-            {project.name}
-          </h3>
-          <p className="text-xs text-text-muted mt-1 line-clamp-2 leading-relaxed">
-            {project.description || project.objectives || 'Engineering project initiative.'}
-          </p>
-        </div>
-      </div>
+        {/* Footer */}
+        <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+          <div className="flex items-center gap-1 text-slate-500">
+            <Calendar className="w-3 h-3" />
+            <span className="text-[11px]">
+              {project.target_date ? formatDate(project.target_date, 'MMM d, yyyy') : 'No target date'}
+            </span>
+          </div>
 
-      {/* Center 3D Project Metrics Tile */}
-      <div className="relative z-10 my-3 p-3 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 flex flex-col gap-2 shadow-2xs backdrop-blur-xs">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-medium text-text-secondary flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Sprint Progress</span>
-          </span>
-          <span className="font-mono font-bold text-text-primary text-xs">
-            {progressPct}%
-          </span>
-        </div>
-        <ProgressBar value={progressPct} size="sm" showPercentage={false} />
-        <div className="flex items-center justify-between text-[11px] font-mono text-text-muted">
-          <span>{done} completed</span>
-          <span>{total} total tasks</span>
-        </div>
-      </div>
-
-      {/* Footer Section */}
-      <div className="relative z-10 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-text-secondary">
-        <div className="flex items-center gap-1.5 font-medium">
-          <Calendar className="w-3.5 h-3.5 text-text-muted" />
-          <span>{project.target_date ? formatDate(project.target_date, 'MMM d, yyyy') : 'Ongoing'}</span>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-mono text-text-muted">
-            {project.member_count || 1} members
-          </span>
-          <div className="flex -space-x-1.5 overflow-hidden">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono text-slate-500">
+              {project.member_count || 1} {project.member_count === 1 ? 'member' : 'members'}
+            </span>
             <Avatar name={project.name} size="xs" />
           </div>
         </div>
@@ -147,3 +253,5 @@ export const ProjectCard3D: React.FC<ProjectCard3DProps> = ({ project }) => {
     </div>
   );
 };
+
+export default ProjectCard3D;

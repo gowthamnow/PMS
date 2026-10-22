@@ -243,7 +243,7 @@ export const TimesheetPage: React.FC = () => {
                         <span className="font-semibold text-text-primary line-clamp-1">
                           {row.task.title}
                         </span>
-                        {row.task.task_number > 0 && (
+                        {Boolean(row.task?.task_number && row.task.task_number > 0) && (
                           <span className="font-mono text-[10px] text-copper-700">
                             #ENG-{row.task.task_number.toString().padStart(3, '0')}
                           </span>
@@ -344,7 +344,7 @@ export const TimesheetPage: React.FC = () => {
             <option value="">Select a task</option>
             {tasksData?.items?.map((t) => (
               <option key={t.id} value={t.id}>
-                #ENG-{t.task_number.toString().padStart(3, '0')}: {t.title}
+                #ENG-{t.task_number ? t.task_number.toString().padStart(3, '0') : (t.id ? t.id.slice(0, 6) : '000')}: {t.title}
               </option>
             ))}
           </Select>

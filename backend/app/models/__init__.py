@@ -1,3 +1,4 @@
+from app.models.workspace import Workspace
 from app.database import Base
 from app.models.audit import AuditLog
 from app.models.gitea import GiteaEvent, GiteaRepo
@@ -23,6 +24,7 @@ from app.models.time_entry import TimeEntry
 from app.models.user import User, UserRole
 
 __all__ = [
+    "Workspace",
     "Base",
     "User",
     "UserRole",

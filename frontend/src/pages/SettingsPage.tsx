@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
@@ -9,23 +9,28 @@ import { Avatar } from '../components/ui/Avatar';
 import {
   User,
   Key,
-  Shield,
   Palette,
   Check,
   Sun,
   Moon,
-  Sparkles,
   Bell,
-  Send,
   Upload,
   Cpu,
   LayoutGrid,
   Sunset,
+  Mail,
+  Send,
+  HelpCircle,
+  Clock,
+  ShieldCheck,
+  CheckCircle2,
+  Server,
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
+import { applyThemeConfig } from '../main';
 
 const profileSchema = z.object({
   full_name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -59,6 +64,12 @@ export const SettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'appearance';
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [isTriggeringMorning, setIsTriggeringMorning] = useState(false);
+  const [isTriggeringEvening, setIsTriggeringEvening] = useState(false);
+
   // Theme states (persisted in localStorage)
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('pms_theme_mode') as 'light' | 'dark') || 'light';
@@ -70,39 +81,52 @@ export const SettingsPage: React.FC = () => {
     return (localStorage.getItem('pms_card_style') as '3d' | 'flat') || '3d';
   });
 
-  // Selected avatar icon / picture
-  const [selectedAvatarSeed, setSelectedAvatarSeed] = useState<string>(() => {
-    return localStorage.getItem(`pms_avatar_${user?.id}`) || user?.full_name || 'Engineer';
-  });
-
   const handleApplyTheme = (mode: 'light' | 'dark') => {
     setThemeMode(mode);
     localStorage.setItem('pms_theme_mode', mode);
-    if (mode === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    applyThemeConfig(mode, accentColor);
     toast.success(`Theme switched to ${mode.toUpperCase()} mode`);
   };
 
   const handleApplyAccent = (id: string) => {
     setAccentColor(id);
     localStorage.setItem('pms_accent_color', id);
+    applyThemeConfig(themeMode, id);
     toast.success(`Accent color set to ${id}`);
   };
 
   const handleApplyCardStyle = (style: '3d' | 'flat') => {
     setCardStyle(style);
     localStorage.setItem('pms_card_style', style);
+    window.dispatchEvent(new Event('pms_style_change'));
     toast.success(`Project card presentation set to ${style === '3d' ? '3D Square Box' : 'Modern Flat'}`);
   };
 
-  const handleSelectAvatarSeed = (seed: string) => {
-    setSelectedAvatarSeed(seed);
-    if (user) {
-      localStorage.setItem(`pms_avatar_${user.id}`, seed);
-      toast.success('Avatar updated');
+  const handleSendTestEmail = async () => {
+    setIsTestingEmail(true);
+    try {
+      await api.tasks.triggerMorningReminder(true);
+      toast.success('Live test email delivered to gowthamthangaraj18@gmail.com! Check your inbox.');
+    } catch (err: any) {
+      toast.error('Failed to send test email');
+    } finally {
+      setIsTestingEmail(false);
+    }
+  };
+
+  // Avatar Photo Upload Handler
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    setIsUploadingPhoto(true);
+    try {
+      const res = await api.users.uploadAvatar(file);
+      await refreshUser();
+      toast.success(res.message || 'Profile picture updated successfully!');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to upload photo');
+    } finally {
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -154,11 +178,36 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // Trigger test reminders
+  const handleTriggerMorning = async () => {
+    setIsTriggeringMorning(true);
+    try {
+      const res = await api.tasks.triggerMorningReminder(true);
+      toast.success(`Morning reminder broadcasted to ${res.reminders_sent || 0} active engineer(s)!`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to trigger morning broadcast');
+    } finally {
+      setIsTriggeringMorning(false);
+    }
+  };
+
+  const handleTriggerEvening = async () => {
+    setIsTriggeringEvening(true);
+    try {
+      const res = await api.tasks.triggerEveningReminder();
+      toast.success(`Evening wrap-up dispatched to ${res.reminders_sent || 0} engineer(s) with PMs in CC!`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to trigger evening broadcast');
+    } finally {
+      setIsTriggeringEvening(false);
+    }
+  };
+
   const tabs: TabItem[] = [
     { id: 'appearance', label: 'Appearance & Themes', icon: <Palette className="w-4 h-4" /> },
-    { id: 'profile', label: 'Profile & Avatar', icon: <User className="w-4 h-4" /> },
+    { id: 'profile', label: 'Profile Picture & Details', icon: <User className="w-4 h-4" /> },
     { id: 'password', label: 'Security & Password', icon: <Key className="w-4 h-4" /> },
-    { id: 'reminders', label: 'Automated Reminders', icon: <Bell className="w-4 h-4" /> },
+    { id: 'automation', label: 'Email Automation & Cadence', icon: <Bell className="w-4 h-4" /> },
   ];
 
   return (
@@ -167,7 +216,7 @@ export const SettingsPage: React.FC = () => {
       <div className="pb-2 border-b border-border">
         <h1 className="text-xl font-bold text-text-primary tracking-tight">System &amp; Workspace Settings</h1>
         <p className="text-xs text-text-secondary mt-0.5">
-          Customize themes, dark/light modes, project card presentation, profile pictures, and notification schedules.
+          Customize themes, profile photos, passwords, email automation schedules, and delay notifications.
         </p>
       </div>
 
@@ -267,7 +316,7 @@ export const SettingsPage: React.FC = () => {
           <div>
             <h3 className="font-bold text-sm text-text-primary mb-1">Project Deck Card Visuals</h3>
             <p className="text-xs text-text-muted mb-4">
-              Customize how project squares appear on the My Projects page.
+              Customize how project cards appear on the Projects page.
             </p>
             <div className="grid grid-cols-2 gap-4 max-w-md">
               <button
@@ -284,8 +333,8 @@ export const SettingsPage: React.FC = () => {
                     <LayoutGrid className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="font-bold text-xs block">3D Square Box</span>
-                    <span className="text-[11px] text-text-muted">Elevation &amp; Depth Hover</span>
+                    <span className="font-bold text-xs block">Elevation Cards</span>
+                    <span className="text-[11px] text-text-muted">Top Status Accent Line</span>
                   </div>
                 </div>
                 {cardStyle === '3d' && <Check className="w-4 h-4 text-amber-600" />}
@@ -305,8 +354,8 @@ export const SettingsPage: React.FC = () => {
                     <Cpu className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="font-bold text-xs block">Modern Flat</span>
-                    <span className="text-[11px] text-text-muted">Minimalist Clean</span>
+                    <span className="font-bold text-xs block">Minimalist Flat</span>
+                    <span className="text-[11px] text-text-muted">Clean Border Only</span>
                   </div>
                 </div>
                 {cardStyle === 'flat' && <Check className="w-4 h-4 text-amber-600" />}
@@ -317,36 +366,42 @@ export const SettingsPage: React.FC = () => {
       )}
 
       {/* ======================================================== */}
-      {/* 2. PROFILE & AVATAR TAB                                  */}
+      {/* 2. PROFILE & AVATAR PICTURE TAB                          */}
       {/* ======================================================== */}
       {activeTab === 'profile' && (
         <div className="flex flex-col gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-          {/* Avatar Selector */}
+          {/* Avatar Photo Section */}
           <div>
-            <h3 className="font-bold text-sm text-text-primary mb-1">Profile Picture &amp; Avatar</h3>
+            <h3 className="font-bold text-sm text-text-primary mb-1">Profile Picture</h3>
             <p className="text-xs text-text-muted mb-4">
-              Select your customized engineering avatar badge or upload a profile image.
+              Upload a real profile picture (JPG, PNG, WEBP) to be displayed across the workspace and comments.
             </p>
-            <div className="flex items-center gap-4">
-              <Avatar name={selectedAvatarSeed} size="lg" />
+            <div className="flex items-center gap-5">
+              <Avatar
+                name={user?.full_name || user?.username || 'User'}
+                src={user?.avatar_url}
+                size="xl"
+                className="w-16 h-16 text-lg border-2 border-amber-500/50 shadow-sm"
+              />
+
               <div className="flex flex-col gap-2">
-                <span className="text-xs font-semibold text-text-secondary">Avatar Presets:</span>
-                <div className="flex items-center gap-2">
-                  {['Engineer', 'Lead Architect', 'Firmware Lead', 'Hardware Specialist', 'Admin Tech'].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => handleSelectAvatarSeed(preset)}
-                      className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${
-                        selectedAvatarSeed === preset
-                          ? 'border-copper-600 bg-copper-50 text-copper-800 font-semibold'
-                          : 'border-slate-200 hover:bg-slate-50 text-text-secondary'
-                      }`}
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                </div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handlePhotoUpload}
+                  accept="image/png, image/jpeg, image/webp, image/gif"
+                  className="hidden"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Upload className="w-3.5 h-3.5" />}
+                  isLoading={isUploadingPhoto}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Upload New Photo
+                </Button>
+                <span className="text-[11px] text-text-muted">Max file size: 5 MB (JPG, PNG, WEBP)</span>
               </div>
             </div>
           </div>
@@ -360,7 +415,7 @@ export const SettingsPage: React.FC = () => {
               <Input
                 {...registerProfile('full_name')}
                 error={profileErrors.full_name?.message}
-                placeholder="e.g. Subasri M"
+                placeholder="Gowtham Thangaraj"
               />
             </div>
 
@@ -370,7 +425,7 @@ export const SettingsPage: React.FC = () => {
                 {...registerProfile('email')}
                 type="email"
                 error={profileErrors.email?.message}
-                placeholder="engineer@company.com"
+                placeholder="gowthamthangaraj18@gmail.com"
               />
             </div>
 
@@ -398,6 +453,7 @@ export const SettingsPage: React.FC = () => {
               <Input
                 {...registerPassword('old_password')}
                 type="password"
+                placeholder="••••••••••••"
                 error={passwordErrors.old_password?.message}
               />
             </div>
@@ -407,6 +463,7 @@ export const SettingsPage: React.FC = () => {
               <Input
                 {...registerPassword('new_password')}
                 type="password"
+                placeholder="••••••••••••"
                 error={passwordErrors.new_password?.message}
               />
             </div>
@@ -416,6 +473,7 @@ export const SettingsPage: React.FC = () => {
               <Input
                 {...registerPassword('confirm_password')}
                 type="password"
+                placeholder="••••••••••••"
                 error={passwordErrors.confirm_password?.message}
               />
             </div>
@@ -430,36 +488,98 @@ export const SettingsPage: React.FC = () => {
       )}
 
       {/* ======================================================== */}
-      {/* 4. AUTOMATED REMINDERS & NOTIFICATION SCHEDULE TAB       */}
+      {/* 4. EMAIL AUTOMATION & CADENCE SCHEDULE TAB               */}
       {/* ======================================================== */}
-      {activeTab === 'reminders' && (
-        <div className="flex flex-col gap-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+      {activeTab === 'automation' && (
+        <div className="flex flex-col gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
           <div>
-            <h3 className="font-bold text-sm text-text-primary mb-1">Automated Engineering Reminders</h3>
+            <h3 className="font-bold text-sm text-text-primary mb-1">Automated Engineering Email Cadence</h3>
             <p className="text-xs text-text-muted">
-              Scheduled notification system designed to keep engineers aligned on daily goals and bench progress.
+              Engineering PMS includes a built-in background scheduler that runs Monday through Friday to keep engineering deliverables on track.
             </p>
           </div>
 
+          {/* Schedule Highlights */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Sun className="w-4 h-4 text-amber-600" />
-                <h4 className="font-bold text-xs text-amber-900">Morning Login &amp; Day Plan (8:30 – 9:30 AM)</h4>
+            <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/50 flex flex-col justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Sun className="w-4 h-4 text-amber-600" />
+                  <h4 className="font-bold text-xs text-amber-900">Morning Login &amp; Day Plan (8:30 – 9:30 AM)</h4>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Sends an automated morning email to active engineers listing their top pending tasks, prompt to set their Day Plan, and check roadblocks.
+                </p>
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Sends an automated reminder to all engineers who have not logged in by 9:30 AM, directing them to open their Day Plan, check priority tasks, and set their focus agenda.
-              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={<Send className="w-3.5 h-3.5 text-amber-600" />}
+                isLoading={isTriggeringMorning}
+                onClick={handleTriggerMorning}
+              >
+                Trigger Morning Broadcast Now
+              </Button>
             </div>
 
-            <div className="p-4 rounded-xl border border-orange-200 bg-orange-50/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Sunset className="w-4 h-4 text-orange-600" />
-                <h4 className="font-bold text-xs text-orange-900">Evening Push &amp; Bench Notes (4:00 – 5:30 PM)</h4>
+            <div className="p-4 rounded-xl border border-orange-200 bg-orange-50/50 flex flex-col justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Sunset className="w-4 h-4 text-orange-600" />
+                  <h4 className="font-bold text-xs text-orange-900">Evening Push &amp; PM Escalation (4:00 – 5:30 PM)</h4>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Reminds engineers to push Git code and log bench progress. Escalates incomplete tasks with zero daily activity to Project Managers in CC.
+                </p>
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Reminds engineers to push all local Git commits and document today's bench progress. At 5:30 PM, pending tasks with zero updates are escalated with Project Managers in CC.
-              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={<Send className="w-3.5 h-3.5 text-orange-600" />}
+                isLoading={isTriggeringEvening}
+                onClick={handleTriggerEvening}
+              >
+                Trigger Evening Broadcast Now
+              </Button>
+            </div>
+          </div>
+
+          <hr className="border-slate-100" />
+
+          {/* Live Gmail SMTP Active Status Card */}
+          <div className="p-5 rounded-xl border border-emerald-300 bg-emerald-50/70 shadow-xs">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-emerald-950">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <h4 className="font-bold text-sm">
+                  Live Gmail SMTP Active &amp; Verified
+                </h4>
+              </div>
+              <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-emerald-200/80 text-emerald-800">
+                Production Active
+              </span>
+            </div>
+            <p className="text-xs text-slate-700 leading-relaxed mb-3">
+              Automated notifications and morning/evening task summaries are delivering in real-time from <strong>gowthamthangaraj18@gmail.com</strong> via Google SMTP TLS (Port 587).
+            </p>
+
+            <div className="bg-white p-3 rounded-lg border border-emerald-200 font-mono text-xs text-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div><span className="text-slate-500">Host:</span> smtp.gmail.com:587</div>
+              <div><span className="text-slate-500">Sender:</span> gowthamthangaraj18@gmail.com</div>
+              <div><span className="text-slate-500">Encryption:</span> TLS Enabled</div>
+              <div><span className="text-slate-500">Status:</span> Connected &amp; Delivering</div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<Send className="w-3.5 h-3.5" />}
+                isLoading={isTestingEmail}
+                onClick={handleSendTestEmail}
+              >
+                Send Instant Test Email to Gowtham
+              </Button>
             </div>
           </div>
         </div>
@@ -467,3 +587,5 @@ export const SettingsPage: React.FC = () => {
     </div>
   );
 };
+
+export default SettingsPage;

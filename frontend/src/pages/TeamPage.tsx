@@ -293,7 +293,7 @@ export const TeamPage: React.FC = () => {
                                     >
                                       <div className="flex items-center gap-2">
                                         <span className="font-mono text-xs font-semibold text-text-muted">
-                                          #ENG-{t.task_number.toString().padStart(3, '0')}
+                                          #ENG-{t.task_number ? t.task_number.toString().padStart(3, '0') : (t.id ? t.id.slice(0, 6) : '000')}
                                         </span>
                                         <span className="font-medium text-text-primary">
                                           {t.title}

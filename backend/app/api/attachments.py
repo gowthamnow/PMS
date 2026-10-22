@@ -35,6 +35,7 @@ from app.services.storage_service import (
     delete_file,
     get_total_used_bytes,
     save_file,
+    validate_extension,
     validate_file_content_type,
 )
 
@@ -109,6 +110,7 @@ async def upload_attachment(
     validate_file_content_type(header_bytes, file.content_type or "")
 
     original_name = file.filename or "attachment.bin"
+    validate_extension(original_name)
     stored_path, stored_filename = await save_file(
         content=content,
         project_id=project_id,
@@ -190,10 +192,15 @@ async def download_attachment(
     if not os.path.exists(full_path):
         raise NotFoundError("File not found on storage")
 
+    safe_filename = os.path.basename(attachment.filename).replace('"', '')
     return FileResponse(
         path=full_path,
         filename=attachment.filename,
         media_type=attachment.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -233,3 +240,27 @@ async def delete_attachment(
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/avatars/{filename}")
+async def get_avatar_image(filename: str):
+    """
+    Publicly serve user profile avatar photos.
+    """
+    safe_name = os.path.basename(filename)
+    avatar_path = os.path.join(settings.ATTACHMENT_STORAGE_PATH, "avatars", safe_name)
+    if not os.path.exists(avatar_path):
+        raise NotFoundError("Avatar not found")
+    return FileResponse(path=avatar_path, headers={"X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/projects/{filename}")
+async def get_project_image(filename: str):
+    """
+    Serve project schematic banner / cover images.
+    """
+    safe_name = os.path.basename(filename)
+    img_path = os.path.join(settings.ATTACHMENT_STORAGE_PATH, "projects", safe_name)
+    if not os.path.exists(img_path):
+        raise NotFoundError("Project image not found")
+    return FileResponse(path=img_path, headers={"X-Content-Type-Options": "nosniff"})

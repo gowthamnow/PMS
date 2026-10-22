@@ -1,0 +1,39 @@
+# Dependabot automated dependency version and security scanning
+version: 2
+updates:
+  # Python Backend dependencies
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - "security"
+      - "dependencies"
+      - "backend"
+
+  # React Frontend dependencies
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:30"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - "security"
+      - "dependencies"
+      - "frontend"
+
+  # GitHub Actions workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "ci"
+      - "actions"

@@ -68,13 +68,33 @@ def validate_file_content_type(header_bytes: bytes, declared_content_type: str) 
             )
 
 
+ALLOWED_ATTACHMENT_EXTENSIONS = {
+    "pdf", "png", "jpg", "jpeg", "webp", "gif", "zip", "tar", "gz",
+    "csv", "txt", "docx", "xlsx", "pptx", "bin", "hex",
+    "kicad_sch", "kicad_pcb", "gerber", "gbr", "step", "stp", "stl", "json", "md"
+}
+
+BLOCKED_EXTENSIONS = {
+    "html", "htm", "svg", "exe", "bat", "cmd", "sh", "ps1", "vbs",
+    "js", "py", "php", "jsp", "jar", "war", "dll", "so", "msi", "scr", "com", "pif"
+}
+
+
+def validate_extension(filename: str) -> str:
+    ext = Path(filename).suffix.lstrip(".").lower()
+    if not ext:
+        raise ValidationError("Attachment must have a valid file extension")
+    if ext in BLOCKED_EXTENSIONS or ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
+        raise ValidationError(f"File extension '.{ext}' is not permitted for upload")
+    return "".join(c for c in ext if c.isalnum() or c == "_") or "bin"
+
+
 async def save_file(
     content: bytes,
     project_id: uuid.UUID,
     original_filename: str,
 ) -> tuple[str, str]:
-    ext = Path(original_filename).suffix.lstrip(".").lower()
-    safe_ext = "".join(c for c in ext if c.isalnum()) or "bin"
+    safe_ext = validate_extension(original_filename)
     stored_filename = f"{uuid.uuid4()}.{safe_ext}"
 
     project_dir = os.path.join(settings.ATTACHMENT_STORAGE_PATH, str(project_id))

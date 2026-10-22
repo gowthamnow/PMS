@@ -6,20 +6,20 @@ import {
   LayoutDashboard,
   FolderOpen,
   CheckSquare,
+  MessageSquare,
   Users,
   Clock,
   BarChart2,
-  GitBranch,
   Bell,
   Settings,
   UserCog,
   Settings2,
   ChevronLeft,
   ChevronRight,
-  Cpu,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { Logo } from '../ui/Logo';
 
 export interface SidebarProps {
   isCollapsed: boolean;
@@ -41,13 +41,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
   const mainNavItems = [
     { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
     { label: 'Projects', icon: FolderOpen, href: '/projects' },
-    { label: 'My Tasks', icon: CheckSquare, href: '/tasks' },
+    { label: 'Tasks', icon: CheckSquare, href: '/tasks' },
+    { label: 'Messages', icon: MessageSquare, href: '/messages' },
     { label: 'Team', icon: Users, href: '/team' },
     { label: 'Timesheet', icon: Clock, href: '/timesheet' },
     { label: 'Reports', icon: BarChart2, href: '/reports' },
-    { label: 'Git & Gitea Hub', icon: GitBranch, href: '/git-activity' },
     {
-
       label: 'Notifications',
       icon: Bell,
       href: '/notifications',
@@ -67,23 +66,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
         isCollapsed ? 'w-[64px]' : 'w-[240px]'
       )}
     >
-      {/* Brand Header */}
-      <div className="h-[60px] border-b border-border flex items-center px-4 justify-between bg-slate-50/50">
-        <div className="flex items-center gap-2.5 overflow-hidden">
-          <div className="w-8 h-8 rounded bg-copper-600 text-white flex items-center justify-center shrink-0 shadow-subtle">
-            <Cpu className="w-5 h-5 text-white" />
-          </div>
-          {!isCollapsed && (
-            <div className="flex flex-col min-w-0">
-              <span className="font-semibold text-sm text-text-primary tracking-tight truncate">
-                Engineering PMS
-              </span>
-              <span className="text-[10px] text-text-muted font-mono tracking-wider uppercase">
-                PCB &bull; HW &bull; FW
-              </span>
-            </div>
-          )}
-        </div>
+      {/* Brand Header with Attractive Hardware Vector Logo */}
+      <div className="h-[60px] border-b border-border flex items-center px-3.5 justify-between bg-slate-50/50 overflow-hidden">
+        <Logo size="sm" showText={!isCollapsed} />
       </div>
 
       {/* Navigation Body */}

@@ -59,7 +59,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
       {/* Top row: Task number & priority badge */}
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs font-semibold text-text-muted hover:text-copper-700">
-          #ENG-{task.task_number.toString().padStart(3, '0')}
+          #ENG-{task.task_number ? task.task_number.toString().padStart(3, '0') : (task.id ? task.id.slice(0, 6) : '000')}
         </span>
         <PriorityBadge priority={task.priority} size="sm" />
       </div>

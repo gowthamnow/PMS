@@ -51,6 +51,7 @@ class Project(Base):
     target_date = Column(Date, nullable=True)
     actual_end_date = Column(Date, nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    image_url = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),
@@ -58,7 +59,17 @@ class Project(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
+
     creator = relationship("User", foreign_keys=[created_by])
+    workspace = relationship("Workspace", back_populates="projects")
+
+    @property
+    def workspace_name(self):
+        if "workspace" in self.__dict__:
+            ws = self.__dict__["workspace"]
+            return ws.name if ws else None
+        return None
     members = relationship("ProjectMember", back_populates="project", cascade="all, delete-orphan")
 
 

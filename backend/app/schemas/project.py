@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.project import ProjectPriority, ProjectRole, ProjectStatus
 from app.schemas.user import UserResponse
@@ -11,6 +11,19 @@ class ProjectMemberBase(BaseModel):
     user_id: uuid.UUID
     role: ProjectRole = ProjectRole.MEMBER
 
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v):
+        if isinstance(v, str):
+            v_upper = v.upper()
+            if v_upper in ("ENGINEER", "MEMBER"):
+                return ProjectRole.MEMBER
+            if v_upper in ("PROJECT_MANAGER", "MANAGER"):
+                return ProjectRole.MANAGER
+            if v_upper in ("REVIEWER", "VIEWER"):
+                return ProjectRole.VIEWER
+        return v
+
 
 class ProjectMemberCreate(ProjectMemberBase):
     pass
@@ -18,6 +31,19 @@ class ProjectMemberCreate(ProjectMemberBase):
 
 class ProjectMemberUpdate(BaseModel):
     role: ProjectRole
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v):
+        if isinstance(v, str):
+            v_upper = v.upper()
+            if v_upper in ("ENGINEER", "MEMBER"):
+                return ProjectRole.MEMBER
+            if v_upper in ("PROJECT_MANAGER", "MANAGER"):
+                return ProjectRole.MANAGER
+            if v_upper in ("REVIEWER", "VIEWER"):
+                return ProjectRole.VIEWER
+        return v
 
 
 class ProjectMemberResponse(BaseModel):
@@ -40,6 +66,8 @@ class ProjectBase(BaseModel):
     start_date: Optional[date] = None
     target_date: Optional[date] = None
     actual_end_date: Optional[date] = None
+    image_url: Optional[str] = None
+    workspace_id: Optional[uuid.UUID] = None
 
 
 class ProjectCreate(ProjectBase):
@@ -55,6 +83,8 @@ class ProjectUpdate(BaseModel):
     start_date: Optional[date] = None
     target_date: Optional[date] = None
     actual_end_date: Optional[date] = None
+    image_url: Optional[str] = None
+    workspace_id: Optional[uuid.UUID] = None
 
 
 class ProjectResponse(ProjectBase):
@@ -62,6 +92,7 @@ class ProjectResponse(ProjectBase):
     created_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    workspace_name: Optional[str] = None
     members: list[ProjectMemberResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

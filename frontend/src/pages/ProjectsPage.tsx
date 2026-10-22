@@ -15,7 +15,7 @@ import { DatePicker } from '../components/ui/DatePicker';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { EmptyState } from '../components/ui/EmptyState';
 import { formatDate } from '../lib/utils';
-import { Plus, Search, FolderPlus, X, LayoutGrid, List } from 'lucide-react';
+import { Plus, Search, FolderPlus, X, LayoutGrid, List, Trash2, AlertTriangle } from 'lucide-react';
 import { ProjectCard3D } from '../components/projects/ProjectCard3D';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -30,6 +30,7 @@ const projectSchema = z.object({
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
   start_date: z.string().optional(),
   target_date: z.string().optional(),
+  workspace_id: z.string().optional(),
 });
 
 type ProjectFormData = z.infer<typeof projectSchema>;
@@ -42,20 +43,29 @@ export const ProjectsPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [workspaceFilter, setWorkspaceFilter] = useState<string>('');
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const isAdmin = user?.role === 'ADMIN';
 
+  // Fetch workspaces (for admin workspace switching & assignment)
+  const { data: workspaces = [] } = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: () => api.workspaces.getWorkspaces(),
+  });
+
   // Fetch projects query
   const { data, isLoading } = useQuery({
-    queryKey: ['projects', { page, status: statusFilter, search }],
+    queryKey: ['projects', { page, status: statusFilter, search, workspaceFilter }],
     queryFn: () =>
       api.projects.getProjects({
         page,
-        page_size: 10,
+        page_size: 12,
         status: statusFilter || undefined,
         search: search || undefined,
+        workspace_id: workspaceFilter || undefined,
       }),
   });
 
@@ -94,6 +104,18 @@ export const ProjectsPage: React.FC = () => {
     await createMutation.mutateAsync(formData);
   };
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.projects.deleteProject(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setProjectToDelete(null);
+      toast.success('Project deleted successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to delete project');
+    },
+  });
+
   const columns: Column<Project>[] = [
     {
       key: 'name',
@@ -107,6 +129,15 @@ export const ProjectsPage: React.FC = () => {
             {p.description || 'No description'}
           </span>
         </div>
+      ),
+    },
+    {
+      key: 'workspace',
+      header: 'Workspace',
+      render: (p) => (
+        <span className="text-xs text-text-secondary">
+          {p.workspace_name ? `🏢 ${p.workspace_name}` : '—'}
+        </span>
       ),
     },
     {
@@ -141,7 +172,7 @@ export const ProjectsPage: React.FC = () => {
       header: 'Team',
       render: (p) => (
         <span className="font-mono text-xs text-text-secondary">
-          {p.member_count || 0} members
+          {p.member_count || 1} members
         </span>
       ),
     },
@@ -150,8 +181,26 @@ export const ProjectsPage: React.FC = () => {
       header: 'Target Date',
       render: (p) => (
         <span className="text-xs text-text-secondary">
-          {formatDate(p.target_date, 'MMM d, yyyy')}
+          {p.target_date ? formatDate(p.target_date, 'MMM d, yyyy') : '—'}
         </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (p) => (
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setProjectToDelete(p)}
+              className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+              title="Delete Project"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       ),
     },
   ];
@@ -159,11 +208,11 @@ export const ProjectsPage: React.FC = () => {
   return (
     <div className="flex flex-col gap-5">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-border">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-border">
         <div>
           <h1 className="text-xl font-bold text-text-primary tracking-tight">Engineering Projects</h1>
           <p className="text-xs text-text-secondary mt-0.5">
-            Manage PCB, firmware, and embedded system initiatives.
+            Manage hardware, firmware, PCB schematics, and software engineering initiatives.
           </p>
         </div>
         {isAdmin && (
@@ -212,18 +261,46 @@ export const ProjectsPage: React.FC = () => {
               <option value="ARCHIVED">Archived</option>
             </select>
           </div>
+
+          {isAdmin && workspaces.length > 0 && (
+            <div className="w-48">
+              <select
+                value={workspaceFilter}
+                onChange={(e) => {
+                  setWorkspaceFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full text-xs bg-white border border-border rounded-md px-2.5 py-1.5 text-text-secondary focus:outline-none focus:ring-1 focus:ring-copper-500 cursor-pointer"
+              >
+                <option value="">All Workspaces</option>
+                {workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>
+                    🏢 {ws.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {!isAdmin && user?.workspace_name && (
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-100 text-slate-700 text-xs border border-slate-200">
+              <span className="text-slate-400">Workspace:</span>
+              <strong className="text-slate-900 font-semibold">{user.workspace_name}</strong>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
-          {(search || statusFilter) && (
+          {(search || statusFilter || workspaceFilter) && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setSearch('');
                 setStatusFilter('');
+                setWorkspaceFilter('');
               }}
-              className="text-text-muted hover:text-red-600 gap-1"
+              className="text-text-muted hover:text-red-600 gap-1 text-xs"
             >
               <X className="w-3.5 h-3.5" />
               Reset
@@ -240,10 +317,10 @@ export const ProjectsPage: React.FC = () => {
                   ? 'bg-white shadow-xs text-copper-700'
                   : 'text-text-muted hover:text-text-primary'
               }`}
-              title="3D Square Cards Grid"
+              title="Cards Grid View"
             >
               <LayoutGrid className="w-4 h-4" />
-              <span className="hidden sm:inline">3D Grid</span>
+              <span className="hidden sm:inline">Cards</span>
             </button>
             <button
               type="button"
@@ -262,7 +339,7 @@ export const ProjectsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Projects Display: 3D Grid vs Table */}
+      {/* Projects Display: Grid vs Table */}
       {viewMode === 'grid' ? (
         isLoading ? (
           <div className="py-16 flex justify-center items-center">
@@ -275,9 +352,13 @@ export const ProjectsPage: React.FC = () => {
             icon={<FolderPlus className="w-10 h-10 text-slate-300" />}
           />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {(data?.items || []).map((project) => (
-              <ProjectCard3D key={project.id} project={project} />
+              <ProjectCard3D
+                key={project.id}
+                project={project}
+                onDelete={isAdmin ? (p) => setProjectToDelete(p) : undefined}
+              />
             ))}
           </div>
         )
@@ -333,6 +414,17 @@ export const ProjectsPage: React.FC = () => {
             {...register('name')}
           />
 
+          {isAdmin && workspaces.length > 0 && (
+            <Select label="Assign Workspace" {...register('workspace_id')}>
+              <option value="">Default Workspace</option>
+              {workspaces.map((ws) => (
+                <option key={ws.id} value={ws.id}>
+                  {ws.name}
+                </option>
+              ))}
+            </Select>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <Select label="Status" error={errors.status?.message} {...register('status')}>
               <option value="PLANNING">Planning</option>
@@ -376,6 +468,45 @@ export const ProjectsPage: React.FC = () => {
           />
         </form>
       </Modal>
+
+      {/* Delete Project Confirmation Modal */}
+      {isAdmin && (
+        <Modal
+          isOpen={!!projectToDelete}
+          onClose={() => setProjectToDelete(null)}
+          title="Delete Project"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-3 p-3.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-red-600 mt-0.5" />
+              <div>
+                <p className="font-semibold text-red-900">Are you sure you want to permanently delete this project?</p>
+                <p className="mt-1 leading-relaxed">
+                  This action will permanently delete <strong>{projectToDelete?.name}</strong> along with all associated tasks, deliverables, time entries, and uploaded files. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setProjectToDelete(null)}
+                disabled={deleteMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                isLoading={deleteMutation.isPending}
+                onClick={() => projectToDelete && deleteMutation.mutate(projectToDelete.id)}
+              >
+                Permanently Delete
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

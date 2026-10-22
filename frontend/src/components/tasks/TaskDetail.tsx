@@ -2,15 +2,18 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Task, TaskComment, Attachment, TimeEntry, TaskStatus, Priority } from '../../types';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { StatusBadge } from './StatusBadge';
 import { PriorityBadge } from './PriorityBadge';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { Textarea } from '../ui/Textarea';
+import { MentionTextarea } from '../ui/MentionTextarea';
 import { Input } from '../ui/Input';
 import { DatePicker } from '../ui/DatePicker';
 import { Spinner } from '../ui/Spinner';
 import { EmptyState } from '../ui/EmptyState';
+import { Modal } from '../ui/Modal';
 import { formatDate, formatRelativeTime, formatDuration, formatFileSize, isOverdue } from '../../lib/utils';
 import {
   Calendar,
@@ -28,6 +31,8 @@ import {
   User,
   ShieldCheck,
   Upload,
+  AlertTriangle,
+  Mail,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -38,6 +43,7 @@ export interface TaskDetailProps {
 }
 
 export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose }) => {
+  const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [commentText, setCommentText] = useState('');
   const [isLoggingTime, setIsLoggingTime] = useState(false);
@@ -45,6 +51,10 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
   const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
   const [logDescription, setLogDescription] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
+  const [delayMessage, setDelayMessage] = useState('');
+
+  const isAdminOrManager = currentUser?.role === 'ADMIN' || currentUser?.role === 'PROJECT_MANAGER';
 
   // 1. Fetch Task
   const {
@@ -57,46 +67,38 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
   });
 
   // 2. Fetch Comments
-  const {
-    data: comments = [],
-    isLoading: isLoadingComments,
-  } = useQuery({
-    queryKey: ['tasks', taskId, 'comments'],
-    queryFn: () => api.tasks.getTaskComments(taskId),
+  const { data: comments = [], isLoading: isLoadingComments } = useQuery({
+    queryKey: ['task-comments', taskId],
+    queryFn: () => api.tasks.getComments(taskId),
+    refetchInterval: 15000,
   });
 
   // 3. Fetch Time Entries
-  const {
-    data: timeEntries = [],
-    isLoading: isLoadingTimeEntries,
-  } = useQuery({
+  const { data: timeEntries = [], isLoading: isLoadingTimeEntries } = useQuery({
     queryKey: ['time-entries', { task_id: taskId }],
     queryFn: () => api.tasks.getTimeEntries({ task_id: taskId }),
   });
 
   // 4. Fetch Attachments
-  const {
-    data: attachments = [],
-    isLoading: isLoadingAttachments,
-  } = useQuery({
+  const { data: attachments = [], isLoading: isLoadingAttachments } = useQuery({
     queryKey: ['attachments', { task_id: taskId }],
     queryFn: () => api.attachments.getAttachments({ task_id: taskId }),
   });
 
-  // Add Comment Mutation
-  const addCommentMutation = useMutation({
-    mutationFn: (text: string) => api.tasks.addComment(taskId, text),
+  // Comment Mutation
+  const commentMutation = useMutation({
+    mutationFn: (content: string) => api.tasks.addComment(taskId, content),
     onSuccess: () => {
       setCommentText('');
-      queryClient.invalidateQueries({ queryKey: ['tasks', taskId, 'comments'] });
+      queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
       toast.success('Comment posted');
     },
     onError: () => toast.error('Failed to post comment'),
   });
 
-  // Add Time Entry Mutation
-  const addTimeEntryMutation = useMutation({
-    mutationFn: (entry: { task_id: string; work_date: string; duration_hours: number; description?: string }) =>
+  // Log Time Mutation
+  const logTimeMutation = useMutation({
+    mutationFn: (entry: { task_id: string; duration_hours: number; date: string; description?: string }) =>
       api.tasks.addTimeEntry(entry),
     onSuccess: () => {
       setIsLoggingTime(false);
@@ -139,11 +141,24 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
     onError: () => toast.error('Failed to delete attachment'),
   });
 
+  // Delay Inquiry Mutation
+  const delayInquiryMutation = useMutation({
+    mutationFn: (msg: string) => api.tasks.sendDelayInquiry(taskId, msg),
+    onSuccess: (res: any) => {
+      setIsDelayModalOpen(false);
+      setDelayMessage('');
+      queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      toast.success(res.message || 'Delay inquiry email dispatched with managers in CC!');
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to dispatch delay inquiry');
+    },
+  });
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Client-side 25MB check
     if (file.size > 25 * 1024 * 1024) {
       toast.error('File size exceeds 25 MB limit.');
       return;
@@ -183,7 +198,13 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
   }
 
   const overdue = isOverdue(task.due_date, task.status);
-  const totalLogged = timeEntries.reduce((sum, item) => sum + item.duration_hours, 0);
+  const safeTimeEntries: TimeEntry[] = Array.isArray(timeEntries)
+    ? timeEntries
+    : (timeEntries as any)?.items || [];
+  const totalLogged = safeTimeEntries.reduce(
+    (sum, item) => sum + (Number(item.duration_hours) || 0),
+    0
+  );
 
   return (
     <div className="w-full bg-white border border-border rounded-lg shadow-card overflow-hidden flex flex-col">
@@ -191,13 +212,26 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
       <div className="px-6 py-4 border-b border-border bg-slate-50/70 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="font-mono text-sm font-bold text-copper-700 bg-copper-50 px-2 py-0.5 rounded border border-copper-200">
-            #ENG-{task.task_number.toString().padStart(3, '0')}
+            #ENG-{task.task_number ? task.task_number.toString().padStart(3, '0') : (task.id ? task.id.slice(0, 6) : '000')}
           </span>
           <StatusBadge status={task.status} size="md" />
           <PriorityBadge priority={task.priority} size="md" />
         </div>
 
         <div className="flex items-center gap-2">
+          {isAdminOrManager && task.assignee && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+              leftIcon={<AlertTriangle className="w-3.5 h-3.5 text-red-600" />}
+              onClick={() => setIsDelayModalOpen(true)}
+              title="Send an email to assignee asking why task is delayed"
+            >
+              Why Delay? (Send Inquiry)
+            </Button>
+          )}
+
           {onEdit && (
             <Button
               variant="secondary"
@@ -254,100 +288,57 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
             </div>
           </div>
 
-          {/* Git Refs / Linked Commits */}
-          <div className="flex flex-col gap-2">
-            <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
-              <GitCommit className="w-3.5 h-3.5 text-copper-600" />
-              Linked Git Commits &amp; Pull Requests
-            </h4>
-            {task.git_refs && task.git_refs.length > 0 ? (
-              <div className="divide-y divide-border border border-border rounded-md bg-white overflow-hidden text-xs">
-                {task.git_refs.map((ref, idx) => (
-                  <div key={idx} className="p-2.5 flex items-center justify-between gap-3 hover:bg-slate-50">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {ref.type === 'pr' ? (
-                        <GitPullRequest className="w-4 h-4 text-violet-600 shrink-0" />
-                      ) : (
-                        <GitCommit className="w-4 h-4 text-copper-600 shrink-0" />
-                      )}
-                      <span className="font-mono text-xs font-semibold text-text-primary">
-                        {ref.ref.slice(0, 8)}
-                      </span>
-                      <span className="text-text-secondary truncate">{ref.message || 'No commit message'}</span>
-                    </div>
-                    {ref.url && (
-                      <a
-                        href={ref.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-text-muted hover:text-copper-700 shrink-0 p-1"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-text-muted italic bg-slate-50/60 p-2.5 rounded border border-border">
-                No Git commits or PRs linked yet. Mention `#ENG-{task.task_number.toString().padStart(3, '0')}` in git commit messages.
-              </p>
-            )}
-          </div>
-
-          {/* Comment Thread */}
-          <div className="flex flex-col gap-3 pt-4 border-t border-border">
+          {/* Comments and Progress Logs Stream */}
+          <div className="flex flex-col gap-3">
             <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-              Discussion &amp; Updates ({comments.length})
+              Bench Notes &amp; Updates ({comments.length})
             </h4>
 
-            {/* Comment Form */}
-            <div className="flex flex-col gap-2 bg-slate-50/60 p-3 rounded-lg border border-border">
-              <Textarea
-                placeholder="Leave an engineering note, bench test result, or question..."
-                rows={2}
+            {/* Comment Post Box */}
+            <div className="flex flex-col gap-2">
+              <MentionTextarea
+                placeholder="Document test progress, pinout measurements, or roadblocks (type @ to mention teammate)..."
                 value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
+                onValueChange={setCommentText}
+                rows={3}
               />
               <div className="flex justify-end">
                 <Button
-                  size="sm"
                   variant="primary"
+                  size="sm"
+                  leftIcon={<Send className="w-3.5 h-3.5" />}
                   disabled={!commentText.trim()}
-                  isLoading={addCommentMutation.isPending}
-                  leftIcon={<Send className="w-3 h-3" />}
-                  onClick={() => addCommentMutation.mutate(commentText)}
+                  isLoading={commentMutation.isPending}
+                  onClick={() => commentMutation.mutate(commentText)}
                 >
-                  Post Comment
+                  Post Update
                 </Button>
               </div>
             </div>
 
             {/* Comments List */}
             {isLoadingComments ? (
-              <div className="py-4 text-center">
+              <div className="py-6 text-center">
                 <Spinner size="sm" />
               </div>
             ) : comments.length === 0 ? (
-              <p className="text-xs text-text-muted text-center py-4">No comments yet.</p>
+              <p className="text-xs text-text-muted italic py-4">No comments logged yet.</p>
             ) : (
-              <div className="flex flex-col gap-3 mt-1">
+              <div className="divide-y divide-border border border-border rounded-lg bg-white overflow-hidden text-xs">
                 {comments.map((c) => (
-                  <div key={c.id} className="flex items-start gap-2.5 text-xs">
-                    <Avatar name={c.user?.full_name || 'User'} size="sm" />
-                    <div className="flex-1 bg-white border border-border rounded-md p-3">
-                      <div className="flex items-center justify-between gap-2 mb-1">
+                  <div key={c.id} className="p-3.5 flex flex-col gap-1.5 hover:bg-slate-50/50">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <Avatar name={c.user?.full_name || 'Engineer'} size="xs" />
                         <span className="font-semibold text-text-primary">
-                          {c.user?.full_name || 'Unknown User'}
-                        </span>
-                        <span className="text-[10px] text-text-muted">
-                          {formatRelativeTime(c.created_at)}
+                          {c.user?.full_name || c.user?.username}
                         </span>
                       </div>
-                      <p className="text-text-secondary whitespace-pre-wrap leading-relaxed">
-                        {c.content}
-                      </p>
+                      <span className="text-text-muted">{formatRelativeTime(c.created_at)}</span>
                     </div>
+                    <p className="text-text-primary whitespace-pre-wrap leading-relaxed pl-6">
+                      {c.content}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -355,218 +346,167 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
           </div>
         </div>
 
-        {/* Right Sidebar (1/3): Metadata, Time Log, Attachments */}
-        <div className="p-6 bg-slate-50/30 flex flex-col gap-6 text-xs">
-          {/* Status Quick Switch */}
-          <div className="flex flex-col gap-2">
-            <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
-              Change Status
-            </label>
-            <select
-              value={task.status}
-              onChange={(e) => statusMutation.mutate(e.target.value as TaskStatus)}
-              className="bg-white border border-border rounded-md px-3 py-1.5 text-xs font-medium text-text-primary focus:outline-none focus:ring-1 focus:ring-copper-500 cursor-pointer"
-            >
-              <option value="TODO">To Do</option>
-              <option value="IN_PROGRESS">In Progress</option>
-              <option value="IN_REVIEW">In Review</option>
-              <option value="BLOCKED">Blocked</option>
-              <option value="DONE">Done</option>
-            </select>
-          </div>
-
-          {/* People */}
-          <div className="flex flex-col gap-3 border-t border-border pt-4">
-            <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
-              People
+        {/* Right Column (1/3): Metadata & Time Entries */}
+        <div className="p-6 flex flex-col gap-5 bg-slate-50/30">
+          {/* Status Quick Changer */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+              Status Pipeline
             </span>
-
-            {/* Assignee */}
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-text-muted" />
-                Assignee:
-              </span>
-              {task.assignee ? (
-                <div className="flex items-center gap-1.5">
-                  <Avatar name={task.assignee.full_name} size="xs" />
-                  <span className="font-medium text-text-primary">{task.assignee.full_name}</span>
-                </div>
-              ) : (
-                <span className="text-text-muted italic">Unassigned</span>
-              )}
-            </div>
-
-            {/* Reviewer */}
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-text-muted" />
-                Reviewer:
-              </span>
-              {task.reviewer ? (
-                <div className="flex items-center gap-1.5">
-                  <Avatar name={task.reviewer.full_name} size="xs" />
-                  <span className="font-medium text-text-primary">{task.reviewer.full_name}</span>
-                </div>
-              ) : (
-                <span className="text-text-muted italic">None</span>
-              )}
+            <div className="grid grid-cols-2 gap-1.5">
+              {(['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', 'DONE'] as TaskStatus[]).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => statusMutation.mutate(st)}
+                  className={`px-2 py-1.5 rounded text-xs font-medium border text-left transition-all ${
+                    task.status === st
+                      ? 'bg-copper-600 text-white border-copper-700 shadow-xs'
+                      : 'bg-white text-text-secondary border-border hover:bg-slate-100'
+                  }`}
+                >
+                  {st.replace('_', ' ')}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Dates */}
-          <div className="flex flex-col gap-3 border-t border-border pt-4">
-            <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">
-              Schedule
+          <hr className="border-border" />
+
+          {/* Assignee Details */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+              Assigned Engineer
             </span>
-
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-text-muted" />
-                Start Date:
-              </span>
-              <span className="text-text-primary">{formatDate(task.start_date)}</span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-text-muted" />
-                Due Date:
-              </span>
-              <span className={overdue ? 'text-red-600 font-bold' : 'text-text-primary'}>
-                {formatDate(task.due_date)} {overdue && '(Overdue)'}
-              </span>
-            </div>
+            {task.assignee ? (
+              <div className="flex items-center gap-2.5 p-2 bg-white rounded border border-border">
+                <Avatar name={task.assignee.full_name || task.assignee.username} size="sm" />
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-semibold text-text-primary truncate">
+                    {task.assignee.full_name || task.assignee.username}
+                  </span>
+                  <span className="text-[11px] text-text-muted truncate">
+                    {task.assignee.email}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <span className="text-xs text-text-muted italic">Unassigned</span>
+            )}
           </div>
 
-          {/* Time Tracking */}
-          <div className="flex flex-col gap-3 border-t border-border pt-4">
+          {/* Dates & Deadlines */}
+          <div className="flex flex-col gap-2 text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1">
+              <span className="text-text-muted flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Target Due Date</span>
+              </span>
+              <span className={`font-mono font-semibold ${overdue ? 'text-red-600' : 'text-text-primary'}`}>
+                {task.due_date ? formatDate(task.due_date) : 'None'}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-text-muted flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Estimated Time</span>
+              </span>
+              <span className="font-mono text-text-primary">
+                {task.estimated_hours ? `${task.estimated_hours}h` : '0h'}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-text-muted flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-copper-600" />
-                Time Tracking
+                <span>Logged Time</span>
               </span>
-              <button
-                type="button"
+              <span className="font-mono font-bold text-copper-700">
+                {totalLogged.toFixed(1)}h
+              </span>
+            </div>
+          </div>
+
+          <hr className="border-border" />
+
+          {/* Timesheet Quick Logger */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                Work Hours Logger
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setIsLoggingTime(!isLoggingTime)}
-                className="text-[11px] text-copper-700 hover:underline font-semibold"
+                className="text-xs text-copper-700 p-0 h-auto"
               >
                 {isLoggingTime ? 'Cancel' : '+ Log Hours'}
-              </button>
+              </Button>
             </div>
 
-            <div className="bg-white p-3 rounded border border-border flex justify-between font-mono">
-              <div>
-                <span className="text-[10px] text-text-muted block uppercase">Logged</span>
-                <span className="font-semibold text-sm text-text-primary">
-                  {formatDuration(totalLogged)}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] text-text-muted block uppercase">Estimated</span>
-                <span className="font-semibold text-sm text-text-primary">
-                  {formatDuration(task.estimated_hours || 0)}
-                </span>
-              </div>
-            </div>
-
-            {/* Time logging form */}
             {isLoggingTime && (
-              <div className="bg-white p-3 rounded-md border border-copper-200 flex flex-col gap-2 animate-in fade-in">
+              <div className="p-3 bg-white border border-border rounded flex flex-col gap-2 text-xs">
                 <div className="grid grid-cols-2 gap-2">
                   <Input
-                    label="Hours"
+                    label="Hours (e.g. 2.5)"
                     type="number"
                     step="0.25"
-                    placeholder="e.g. 2.5"
                     value={logHours}
                     onChange={(e) => setLogHours(e.target.value)}
                   />
-                  <DatePicker
-                    label="Work Date"
+                  <Input
+                    label="Date"
+                    type="date"
                     value={logDate}
                     onChange={(e) => setLogDate(e.target.value)}
                   />
                 </div>
                 <Input
-                  label="Description"
-                  placeholder="e.g. PCB DRC routing & power plane tuning"
+                  label="Bench Notes / Summary"
+                  placeholder="Soldering, scope probe testing..."
                   value={logDescription}
                   onChange={(e) => setLogDescription(e.target.value)}
                 />
                 <Button
-                  size="sm"
                   variant="primary"
-                  disabled={!logHours || parseFloat(logHours) <= 0}
-                  isLoading={addTimeEntryMutation.isPending}
+                  size="sm"
+                  disabled={!logHours}
+                  isLoading={logTimeMutation.isPending}
                   onClick={() =>
-                    addTimeEntryMutation.mutate({
+                    logTimeMutation.mutate({
                       task_id: taskId,
-                      work_date: logDate,
                       duration_hours: parseFloat(logHours),
+                      date: logDate,
                       description: logDescription,
                     })
                   }
                 >
-                  Save Time Log
+                  Record Hours
                 </Button>
-              </div>
-            )}
-
-            {/* Time Log Entries List */}
-            {timeEntries.length > 0 && (
-              <div className="max-h-36 overflow-y-auto divide-y divide-border border border-border rounded bg-white">
-                {timeEntries.map((te) => (
-                  <div key={te.id} className="p-2 flex items-center justify-between text-[11px]">
-                    <div>
-                      <span className="font-medium text-text-primary">
-                        {formatDuration(te.duration_hours)}
-                      </span>{' '}
-                      <span className="text-text-muted">on {formatDate(te.work_date, 'MMM d')}</span>
-                      {te.description && (
-                        <p className="text-[10px] text-text-secondary truncate max-w-[150px]">
-                          {te.description}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => deleteTimeEntryMutation.mutate(te.id)}
-                      className="text-text-muted hover:text-red-600 p-1"
-                      title="Delete log"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
               </div>
             )}
           </div>
 
-          {/* Attachments */}
-          <div className="flex flex-col gap-3 border-t border-border pt-4">
+          <hr className="border-border" />
+
+          {/* File Attachments */}
+          <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1">
-                <Paperclip className="w-3.5 h-3.5 text-copper-600" />
+              <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
                 Attachments ({attachments.length})
               </span>
-              <label className="text-[11px] text-copper-700 hover:underline font-semibold cursor-pointer flex items-center gap-1">
-                <Upload className="w-3 h-3" />
-                Upload
+              <label className="text-xs text-copper-700 hover:text-copper-800 cursor-pointer font-medium">
+                + Upload
                 <input
                   type="file"
-                  onChange={handleFileUpload}
                   className="hidden"
+                  onChange={handleFileUpload}
                   disabled={isUploading}
                 />
               </label>
             </div>
-
-            {isUploading && (
-              <div className="p-2 bg-copper-50 text-copper-800 rounded border border-copper-200 flex items-center gap-2">
-                <Spinner size="xs" />
-                <span className="text-[11px]">Uploading file (limit 25MB)...</span>
-              </div>
-            )}
 
             {attachments.length === 0 ? (
               <p className="text-text-muted italic text-[11px]">No attachments uploaded.</p>
@@ -575,7 +515,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
                 {attachments.map((att) => (
                   <div
                     key={att.id}
-                    className="p-2 bg-white border border-border rounded flex items-center justify-between gap-2"
+                    className="p-2 bg-white border border-border rounded flex items-center justify-between gap-2 text-xs"
                   >
                     <div className="min-w-0">
                       <p className="font-medium text-text-primary truncate max-w-[160px]">
@@ -608,6 +548,51 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
           </div>
         </div>
       </div>
+
+      {/* Delay Explanation Inquiry Modal */}
+      {isDelayModalOpen && (
+        <Modal
+          isOpen={isDelayModalOpen}
+          onClose={() => setIsDelayModalOpen(false)}
+          title="Dispatch Task Delay Explanation Inquiry"
+          footer={
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setIsDelayModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-red-600 hover:bg-red-700"
+                isLoading={delayInquiryMutation.isPending}
+                onClick={() => delayInquiryMutation.mutate(delayMessage)}
+              >
+                Dispatch Delay Inquiry Email
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4 text-xs">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-900 leading-relaxed">
+              This will send an urgent inquiry email to <strong>{task.assignee?.full_name} ({task.assignee?.email})</strong> with Project Managers in CC, requesting an immediate status report on schedule delay and roadblocks.
+            </div>
+
+            <div>
+              <label className="font-semibold text-text-secondary block mb-1">
+                Custom Inquiry Note / Specific Roadblock Question (Optional):
+              </label>
+              <Textarea
+                placeholder="e.g. Please clarify why the firmware bench testing was delayed past target freeze date..."
+                value={delayMessage}
+                onChange={(e) => setDelayMessage(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
+
+export default TaskDetail;

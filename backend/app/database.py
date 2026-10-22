@@ -1,4 +1,6 @@
 from collections.abc import AsyncGenerator
+import uuid
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -35,3 +37,44 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Ensure columns exist on existing databases
+        await conn.execute(
+            text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL;"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE;"
+            )
+        )
+
+        # Check if any workspace exists
+        res = await conn.execute(text("SELECT id FROM workspaces LIMIT 1;"))
+        ws_row = res.fetchone()
+        if not ws_row:
+            default_id = uuid.uuid4()
+            await conn.execute(
+                text(
+                    "INSERT INTO workspaces (id, name, description, created_at, updated_at) "
+                    "VALUES (:id, 'Main Engineering Workspace', 'Primary workspace for engineering projects and teams', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);"
+                ),
+                {"id": default_id},
+            )
+            # Backfill existing projects and users
+            await conn.execute(
+                text("UPDATE projects SET workspace_id = :ws_id WHERE workspace_id IS NULL;"),
+                {"ws_id": default_id},
+            )
+            await conn.execute(
+                text("UPDATE users SET workspace_id = :ws_id WHERE workspace_id IS NULL AND role != 'ADMIN';"),
+                {"ws_id": default_id},
+            )
+        else:
+            default_id = ws_row[0]
+            # Backfill any newly added projects without workspace
+            await conn.execute(
+                text("UPDATE projects SET workspace_id = :ws_id WHERE workspace_id IS NULL;"),
+                {"ws_id": default_id},
+            )

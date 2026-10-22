@@ -7,6 +7,34 @@ import { AuthProvider } from './lib/auth';
 import { App } from './App';
 import './styles/globals.css';
 
+export const ACCENT_COLOR_MAP: Record<string, { base: string; hover: string; light: string; ring: string }> = {
+  copper: { base: '#D97706', hover: '#B45309', light: '#FEF3C7', ring: 'rgba(217, 119, 6, 0.35)' },
+  emerald: { base: '#059669', hover: '#047857', light: '#D1FAE5', ring: 'rgba(5, 150, 105, 0.35)' },
+  blue: { base: '#2563EB', hover: '#1D4ED8', light: '#DBEAFE', ring: 'rgba(37, 99, 235, 0.35)' },
+  violet: { base: '#7C3AED', hover: '#6D28D9', light: '#EDE9FE', ring: 'rgba(124, 58, 237, 0.35)' },
+  rose: { base: '#E11D48', hover: '#BE123C', light: '#FFE4E6', ring: 'rgba(225, 29, 72, 0.35)' },
+};
+
+export const applyThemeConfig = (mode?: 'light' | 'dark', accent?: string) => {
+  const currentMode = mode || (localStorage.getItem('pms_theme_mode') as 'light' | 'dark') || 'light';
+  if (currentMode === 'dark') {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+
+  const currentAccent = accent || localStorage.getItem('pms_accent_color') || 'copper';
+  const colors = ACCENT_COLOR_MAP[currentAccent] || ACCENT_COLOR_MAP.copper;
+
+  document.documentElement.style.setProperty('--accent-base', colors.base);
+  document.documentElement.style.setProperty('--accent-hover', colors.hover);
+  document.documentElement.style.setProperty('--accent-light', colors.light);
+  document.documentElement.style.setProperty('--accent-ring', colors.ring);
+};
+
+// Initialize immediately on boot
+applyThemeConfig();
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

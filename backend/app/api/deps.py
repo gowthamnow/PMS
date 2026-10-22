@@ -4,6 +4,7 @@ from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError
 from app.core.security import verify_token
@@ -29,7 +30,9 @@ async def get_current_user(
     except Exception:
         raise UnauthorizedError("Could not validate credentials")
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(
+        select(User).options(selectinload(User.workspace)).where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
     if not user:
         raise UnauthorizedError("User does not exist")
@@ -70,6 +73,13 @@ async def get_project_member(
     project = proj_res.scalar_one_or_none()
     if not project:
         raise NotFoundError("Project not found")
+
+    # If non-admin user, check if project belongs to their workspace
+    if current_user.role != UserRole.ADMIN:
+        if not current_user.workspace_id:
+            raise ForbiddenError("Access denied: You are not assigned to any workspace")
+        if project.workspace_id and project.workspace_id != current_user.workspace_id:
+            raise ForbiddenError("Access denied: Project does not belong to your assigned workspace")
 
     if current_user.role == UserRole.ADMIN:
         # Admins have full manager access to any existing project

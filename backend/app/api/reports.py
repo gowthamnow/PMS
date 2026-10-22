@@ -2,7 +2,7 @@ import csv
 from datetime import date, datetime, timedelta, timezone
 import io
 import math
-from typing import Optional
+from typing import Any, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -31,6 +31,15 @@ from app.schemas.reports import (
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
 
+def sanitize_csv_cell(val: Any) -> Any:
+    """
+    Escapes characters that could trigger Formula / CSV Injection (DDE) in spreadsheet software.
+    """
+    if isinstance(val, str) and val and val[0] in ('=', '+', '-', '@', '\t', '\r', '%'):
+        return f"'{val}"
+    return val
+
+
 @router.get("/project-progress", response_model=list[ProjectProgressReport])
 async def get_project_progress_report(
     current_user: User = Depends(get_current_active_user),
@@ -38,6 +47,9 @@ async def get_project_progress_report(
 ):
     query = select(Project)
     if current_user.role != UserRole.ADMIN:
+        if not current_user.workspace_id:
+            return []
+        query = query.where(Project.workspace_id == current_user.workspace_id)
         query = query.join(Project.members).where(ProjectMember.user_id == current_user.id)
     p_res = await db.execute(query)
     projects = p_res.scalars().all()
@@ -75,7 +87,13 @@ async def get_team_workload_report(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    users_res = await db.execute(select(User).where(User.is_active == True).order_by(User.full_name))
+    users_stmt = select(User).where(User.is_active == True)
+    if current_user.role != UserRole.ADMIN:
+        if not current_user.workspace_id:
+            return []
+        users_stmt = users_stmt.where(User.workspace_id == current_user.workspace_id)
+    users_stmt = users_stmt.order_by(User.full_name)
+    users_res = await db.execute(users_stmt)
     users = users_res.scalars().all()
 
     today = date.today()
@@ -260,7 +278,7 @@ async def _build_csv_export(
         progress_data = await get_project_progress_report(current_user=current_user, db=db)
         writer.writerow(["Project ID", "Project Name", "Status", "Total Tasks", "Completed Tasks", "Progress %"])
         for p in progress_data:
-            writer.writerow([p.project_id, p.name, p.status, p.total_tasks, p.completed_tasks, f"{p.percentage}%"])
+            writer.writerow([sanitize_csv_cell(c) for c in [p.project_id, p.name, p.status, p.total_tasks, p.completed_tasks, f"{p.percentage}%"]])
         filename = f"project_progress_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
         output.seek(0)
         return StreamingResponse(
@@ -273,7 +291,7 @@ async def _build_csv_export(
         report_data = await get_time_log_report(current_user=current_user, db=db, page=1, page_size=10000)
         writer.writerow(["ID", "Project", "Task", "User", "Date", "Hours", "Description"])
         for item in report_data.items:
-            writer.writerow([
+            writer.writerow([sanitize_csv_cell(c) for c in [
                 item.id,
                 item.project_name,
                 item.task_title or "",
@@ -281,7 +299,7 @@ async def _build_csv_export(
                 str(item.work_date),
                 str(item.duration_hours),
                 item.description or "",
-            ])
+            ]])
 
     elif norm_type == "overdue":
         tasks = await get_overdue_tasks_report(current_user=current_user, db=db)
@@ -289,7 +307,7 @@ async def _build_csv_export(
             "ID", "Project", "Task Number", "Title", "Status", "Priority", "Due Date", "Days Overdue", "Assignee"
         ])
         for item in tasks:
-            writer.writerow([
+            writer.writerow([sanitize_csv_cell(c) for c in [
                 item.id,
                 item.project_name,
                 item.task_number,
@@ -299,7 +317,7 @@ async def _build_csv_export(
                 str(item.due_date) if item.due_date else "",
                 item.days_overdue,
                 item.assignee_name or "Unassigned",
-            ])
+            ]])
 
     elif norm_type == "team_workload":
         workloads = await get_team_workload_report(current_user=current_user, db=db)
@@ -308,7 +326,7 @@ async def _build_csv_export(
             "TODO", "IN_PROGRESS", "IN_REVIEW", "BLOCKED", "DONE", "Hours This Week"
         ])
         for item in workloads:
-            writer.writerow([
+            writer.writerow([sanitize_csv_cell(c) for c in [
                 item.user_id,
                 item.username,
                 item.full_name,
@@ -320,7 +338,7 @@ async def _build_csv_export(
                 item.blocked,
                 item.done,
                 item.hours_this_week,
-            ])
+            ]])
 
     csv_data = output.getvalue()
     output.close()

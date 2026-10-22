@@ -103,6 +103,11 @@ async def get_dashboard_stats(
         .order_by(AuditLog.created_at.desc())
         .limit(20)
     )
+    if not is_admin:
+        if current_user.workspace_id:
+            audit_stmt = audit_stmt.join(AuditLog.user).where(User.workspace_id == current_user.workspace_id)
+        else:
+            audit_stmt = audit_stmt.where(AuditLog.id == None)
     audit_res = await db.execute(audit_stmt)
     recent_activity = [AuditLogResponse.model_validate(a) for a in audit_res.scalars().all()]
 
@@ -162,6 +167,11 @@ async def get_dashboard_activity(
         .order_by(AuditLog.created_at.desc())
         .limit(50)
     )
+    if current_user.role != UserRole.ADMIN:
+        if current_user.workspace_id:
+            stmt = stmt.join(AuditLog.user).where(User.workspace_id == current_user.workspace_id)
+        else:
+            stmt = stmt.where(AuditLog.id == None)
     res = await db.execute(stmt)
     logs = res.scalars().all()
     activities: list[dict[str, Any]] = [

@@ -3,6 +3,17 @@ export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'A
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'BLOCKED' | 'DONE';
 
+export interface Workspace {
+  id: string;
+  name: string;
+  description?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  project_count: number;
+  member_count: number;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -10,6 +21,9 @@ export interface User {
   full_name: string;
   role: UserRole;
   is_active: boolean;
+  avatar_url?: string;
+  workspace_id?: string;
+  workspace_name?: string;
   created_at: string;
   last_login?: string;
 }
@@ -25,10 +39,13 @@ export interface Project {
   target_date?: string;
   created_by: string;
   created_at: string;
+  workspace_id?: string;
+  workspace_name?: string;
   member_count?: number;
   task_count?: number;
   completed_task_count?: number;
   project_manager?: User;
+  image_url?: string;
 }
 
 export interface ProjectMember {
@@ -128,6 +145,7 @@ export interface GiteaRepo {
   repo_url: string;
   default_branch: string;
   is_active: boolean;
+  avatar_url?: string;
   last_synced_at?: string;
 }
 
@@ -227,4 +245,31 @@ export interface AuditLogEntry {
   details?: string;
   ip_address?: string;
   created_at: string;
+}
+
+
+export interface Message {
+  id: string;
+  sender_id: string;
+  recipient_id?: string;
+  project_id?: string;
+  content: string;
+  attachment_url?: string;
+  is_read: boolean;
+  created_at: string;
+  sender?: User;
+  recipient?: User;
+}
+
+export interface Conversation {
+  id: string;
+  type: 'direct' | 'channel';
+  title: string;
+  subtitle?: string;
+  avatar_url?: string;
+  recipient_id?: string;
+  project_id?: string;
+  last_message?: string;
+  last_message_at?: string;
+  unread_count: number;
 }

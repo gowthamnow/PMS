@@ -6,6 +6,7 @@ import { Spinner } from './components/ui/Spinner';
 
 // Pages
 import { LoginPage } from './pages/LoginPage';
+import { LobbyPage } from './pages/LobbyPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
@@ -13,9 +14,9 @@ import { TaskBoardPage } from './pages/TaskBoardPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 import { MyTasksPage } from './pages/MyTasksPage';
 import { TeamPage } from './pages/TeamPage';
+import { MessagesPage } from './pages/MessagesPage';
 import { TimesheetPage } from './pages/TimesheetPage';
 import { ReportsPage } from './pages/ReportsPage';
-import { GiteaActivityPage } from './pages/GiteaActivityPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { UsersPage } from './pages/admin/UsersPage';
@@ -109,8 +110,9 @@ const AdminRoute: React.FC<{ children: React.ReactElement }> = ({ children }) =>
 export const App: React.FC = () => {
   return (
     <Routes>
-      {/* Public Route */}
+      {/* Public Routes */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/lobby" element={<LobbyPage />} />
 
       {/* Protected Routes wrapped in AppLayout */}
       <Route
@@ -130,10 +132,10 @@ export const App: React.FC = () => {
         <Route path="projects/:id/board" element={<TaskBoardPage />} />
         <Route path="tasks" element={<MyTasksPage />} />
         <Route path="tasks/:id" element={<TaskDetailPage />} />
+        <Route path="messages" element={<MessagesPage />} />
         <Route path="team" element={<TeamPage />} />
         <Route path="timesheet" element={<TimesheetPage />} />
         <Route path="reports" element={<ReportsPage />} />
-        <Route path="git-activity" element={<GiteaActivityPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="settings" element={<SettingsPage />} />
 

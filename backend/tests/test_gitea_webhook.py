@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.skip(reason="Gitea integration route is deprecated")
+
 import hashlib
 import hmac
 import json

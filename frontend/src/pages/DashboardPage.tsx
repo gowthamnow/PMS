@@ -197,7 +197,9 @@ export const DashboardPage: React.FC = () => {
 
   // Hours calculated from time entries
   const todayDateStr = format(new Date(), 'yyyy-MM-dd');
-  const safeTimeEntries = Array.isArray(timeEntriesData) ? timeEntriesData : [];
+  const safeTimeEntries: any[] = Array.isArray(timeEntriesData)
+    ? timeEntriesData
+    : (timeEntriesData as any)?.items || [];
   const hoursLoggedToday = safeTimeEntries
     .filter((e) => e.work_date === todayDateStr)
     .reduce((sum, e) => sum + Number(e.duration_hours || 0), 0);

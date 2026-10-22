@@ -11,6 +11,8 @@ class UserBase(BaseModel):
     email: str
     full_name: str = Field(..., min_length=1, max_length=255)
     role: UserRole = UserRole.ENGINEER
+    avatar_url: Optional[str] = None
+    workspace_id: Optional[uuid.UUID] = None
 
 
 class UserCreate(UserBase):
@@ -22,6 +24,14 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+    avatar_url: Optional[str] = None
+    workspace_id: Optional[uuid.UUID] = None
+
+
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    email: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
 class UserPasswordChange(BaseModel):
@@ -47,9 +57,18 @@ class UserLogin(BaseModel):
         return values
 
 
+class GoogleAuthRequest(BaseModel):
+    credential: Optional[str] = None
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
 class UserResponse(UserBase):
     id: uuid.UUID
     is_active: bool
+    avatar_url: Optional[str] = None
+    workspace_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     last_login: Optional[datetime] = None
@@ -66,3 +85,36 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     sub: Optional[str] = None
     role: Optional[str] = None
+
+
+class GoogleAuthResponse(BaseModel):
+    status: str  # "authenticated" or "pending_approval"
+    approved: bool
+    access_token: Optional[str] = None
+    lobby_token: Optional[str] = None
+    token_type: Optional[str] = "bearer"
+    user: Optional[UserResponse] = None
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    message: Optional[str] = None
+
+
+class LobbyStatusResponse(BaseModel):
+    status: str  # "active" or "pending_approval"
+    approved: bool
+    access_token: Optional[str] = None
+    token_type: Optional[str] = "bearer"
+    user: Optional[UserResponse] = None
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class LobbyResendAlertRequest(BaseModel):
+    email: str
+
+
+class GoogleConfigRequest(BaseModel):
+    client_id: str

@@ -4,9 +4,10 @@
 
 @layer base {
   :root {
-    --copper-base: #D97706;
-    --copper-dark: #B45309;
-    --copper-light: #FEF3C7;
+    --accent-base: #D97706;
+    --accent-hover: #B45309;
+    --accent-light: #FEF3C7;
+    --accent-ring: rgba(217, 119, 6, 0.35);
   }
 
   body {
@@ -15,6 +16,7 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   /* Custom subtle scrollbar */
@@ -38,9 +40,121 @@
 
   /* Focus ring styling */
   *:focus-visible {
-    outline: 2px solid #D97706;
+    outline: 2px solid var(--accent-base);
     outline-offset: 1px;
   }
+}
+
+/* ======================================================== */
+/* DARK MODE OVERRIDES (Obsidian Navy Charcoal)             */
+/* ======================================================== */
+html.dark body {
+  background-color: #0A0F1D !important;
+  color: #F1F5F9 !important;
+}
+
+html.dark .bg-background {
+  background-color: #0A0F1D !important;
+}
+
+html.dark .bg-white {
+  background-color: #111827 !important;
+}
+
+html.dark .bg-slate-50,
+html.dark .bg-slate-50\/70,
+html.dark .bg-slate-50\/60,
+html.dark .bg-slate-50\/40,
+html.dark .bg-panel {
+  background-color: #1A2234 !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #242E42 !important;
+}
+
+html.dark .border-border,
+html.dark .border-slate-200,
+html.dark .border-slate-100 {
+  border-color: #2D3748 !important;
+}
+
+html.dark .text-text-primary,
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #F8FAFC !important;
+}
+
+html.dark .text-text-secondary,
+html.dark .text-slate-700,
+html.dark .text-slate-600 {
+  color: #CBD5E1 !important;
+}
+
+html.dark .text-text-muted,
+html.dark .text-slate-500,
+html.dark .text-slate-400 {
+  color: #94A3B8 !important;
+}
+
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: #1A2234 !important;
+  color: #F8FAFC !important;
+  border-color: #374151 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748B !important;
+}
+
+html.dark .shadow-card,
+html.dark .shadow-subtle,
+html.dark .shadow-lg,
+html.dark .shadow-md {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45) !important;
+}
+
+html.dark .divide-border > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #2D3748 !important;
+}
+
+/* ======================================================== */
+/* DYNAMIC ACCENT OVERRIDES                                 */
+/* ======================================================== */
+.bg-copper-600,
+.bg-amber-600 {
+  background-color: var(--accent-base) !important;
+}
+
+.hover\:bg-copper-700:hover,
+.hover\:bg-amber-700:hover {
+  background-color: var(--accent-hover) !important;
+}
+
+.text-copper-600,
+.text-amber-600,
+.text-copper-700,
+.text-amber-700 {
+  color: var(--accent-base) !important;
+}
+
+.border-copper-500,
+.border-amber-500,
+.border-copper-600,
+.border-amber-600 {
+  border-color: var(--accent-base) !important;
+}
+
+.bg-copper-50,
+.bg-amber-50,
+.bg-copper-50\/40,
+.bg-amber-50\/40 {
+  background-color: var(--accent-light) !important;
 }
 
 @layer utilities {
