@@ -1,9 +1,12 @@
 from datetime import date
+import uuid
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.project import Project
+from app.models.project import Project, ProjectMember, ProjectRole
 from app.models.task import Task
+from app.models.user import User
 
 
 @pytest.mark.asyncio
@@ -94,7 +97,7 @@ async def test_delete_comment_admin_only(
         id=uuid.uuid4(),
         project_id=sample_project.id,
         user_id=engineer_user.id,
-        role=ProjectRole.ENGINEER,
+        role=ProjectRole.MEMBER,
     )
     db_session.add(member)
     await db_session.commit()
