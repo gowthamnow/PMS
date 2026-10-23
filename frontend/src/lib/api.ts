@@ -351,22 +351,24 @@ export const api = {
   },
 
   ai: {
-    solveTask: (taskId: string, autoPostComment?: boolean, customInstruction?: string): Promise<TaskSolveResponse> => {
+    solveTask: (taskId: string, autoPostComment?: boolean, customInstruction?: string, model?: string): Promise<TaskSolveResponse> => {
       const q = new URLSearchParams();
       if (autoPostComment) q.append('auto_post_comment', 'true');
       if (customInstruction) q.append('custom_instruction', customInstruction);
+      if (model) q.append('model', model);
       return apiClient.post(`/ai/solve-task/${taskId}?${q.toString()}`);
     },
-    consultProjectCopilot: (projectId: string, problemDescription: string, category?: string): Promise<ProjectCopilotResponse> =>
+    consultProjectCopilot: (projectId: string, problemDescription: string, category?: string, model?: string): Promise<ProjectCopilotResponse> =>
       apiClient.post(`/ai/project-copilot/${projectId}`, {
         project_id: projectId,
         problem_description: problemDescription,
         category: category || 'GENERAL',
+        model: model || 'gemini-1.5-pro',
       }),
-    getConfig: (): Promise<{ has_api_key: boolean; provider: string; model: string; features: string[] }> =>
+    getConfig: (): Promise<{ has_api_key: boolean; provider: string; model: string; available_models?: string[]; features: string[] }> =>
       apiClient.get('/ai/config'),
     updateConfig: (apiKey: string, model?: string): Promise<any> =>
-      apiClient.post('/ai/config', { api_key: apiKey, model: model || 'gemini-1.5-flash' }),
+      apiClient.post('/ai/config', { api_key: apiKey, model: model || 'gemini-1.5-pro' }),
   },
 
   vault: {

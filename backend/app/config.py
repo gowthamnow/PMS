@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # Google OAuth & Cloud Generative AI
     GOOGLE_CLIENT_ID: str = "787577822859-ghj33lfvj6rlj0s151qd3kus7bc49kbr.apps.googleusercontent.com"
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-1.5-pro"
 
     # Bootstrap Initial Admin
     FIRST_ADMIN_EMAIL: str = "admin@example.com"

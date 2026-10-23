@@ -50,6 +50,7 @@ export const SystemPage: React.FC = () => {
 
   const queryClient = useQueryClient();
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [aiModelInput, setAiModelInput] = useState('gemini-1.5-pro');
   const [isUpdatingAI, setIsUpdatingAI] = useState(false);
 
   // 4. Backup Status
@@ -74,14 +75,14 @@ export const SystemPage: React.FC = () => {
   });
 
   const updateAIMutation = useMutation({
-    mutationFn: (key: string) => api.ai.updateConfig(key),
+    mutationFn: ({ key, model }: { key: string; model: string }) => api.ai.updateConfig(key, model),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system', 'ai-config'] });
-      toast.success('Google Gemini API key updated!');
+      toast.success('Google Gemini API configuration updated!');
       setApiKeyInput('');
       setIsUpdatingAI(false);
     },
-    onError: () => toast.error('Failed to update Gemini API key'),
+    onError: () => toast.error('Failed to update Gemini API configuration'),
   });
 
   // 3. Audit Logs
@@ -359,9 +360,9 @@ export const SystemPage: React.FC = () => {
 
             <div className="flex flex-col gap-2 text-xs pt-1">
               <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-text-muted">Target Model</span>
-                <span className="font-mono font-semibold text-text-primary">
-                  {aiConfig?.model || 'gemini-1.5-flash'}
+                <span className="text-text-muted">Target Model Architecture</span>
+                <span className="font-mono font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                  {aiConfig?.model || 'gemini-1.5-pro'}
                 </span>
               </div>
 
@@ -382,35 +383,52 @@ export const SystemPage: React.FC = () => {
                   </span>
                   <span className="px-2 py-1 rounded bg-slate-50 border border-slate-200 text-[10px] text-slate-700 font-medium flex items-center gap-1">
                     <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
-                    1-Click Auto-Post Fix
+                    Web Dev &amp; Patch Synthesis
                   </span>
                 </div>
               </div>
 
               {isUpdatingAI ? (
-                <div className="flex flex-col gap-1.5 pt-2">
-                  <label className="text-[11px] font-semibold text-text-secondary">
-                    Enter Google Gemini API Key:
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="password"
-                      placeholder="AIzaSy..."
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                    />
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      disabled={!apiKeyInput.trim() || updateAIMutation.isPending}
-                      isLoading={updateAIMutation.isPending}
-                      onClick={() => updateAIMutation.mutate(apiKeyInput)}
+                <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-text-secondary">
+                      Select Gemini Model:
+                    </label>
+                    <select
+                      value={aiModelInput}
+                      onChange={(e) => setAiModelInput(e.target.value)}
+                      className="w-full text-xs rounded-md border border-purple-300 bg-white px-3 py-1.5 font-medium"
                     >
-                      Save Key
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setIsUpdatingAI(false)}>
-                      Cancel
-                    </Button>
+                      <option value="gemini-1.5-pro">✨ Gemini 1.5 Pro (Advanced - Web Dev &amp; Code Synthesis)</option>
+                      <option value="gemini-2.0-flash">⚡ Gemini 2.0 Flash (Next-Gen Ultra Fast)</option>
+                      <option value="gemini-1.5-flash">🚀 Gemini 1.5 Flash (Lightweight Fast)</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-text-secondary">
+                      Enter Google Gemini API Key:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="password"
+                        placeholder="AIzaSy..."
+                        value={apiKeyInput}
+                        onChange={(e) => setApiKeyInput(e.target.value)}
+                      />
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        disabled={!apiKeyInput.trim() || updateAIMutation.isPending}
+                        isLoading={updateAIMutation.isPending}
+                        onClick={() => updateAIMutation.mutate({ key: apiKeyInput, model: aiModelInput })}
+                      >
+                        Save Configuration
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setIsUpdatingAI(false)}>
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ) : null}

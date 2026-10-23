@@ -19,7 +19,7 @@ logger = logging.getLogger("ai_service")
 
 # Dynamic runtime API key (can be set by admin via UI)
 _runtime_gemini_api_key: Optional[str] = None
-_runtime_gemini_model: str = "gemini-1.5-flash"
+_runtime_gemini_model: str = "gemini-1.5-pro"
 
 
 def get_gemini_api_key() -> str:
@@ -30,7 +30,7 @@ def get_gemini_api_key() -> str:
     return getattr(settings, "GEMINI_API_KEY", "") or ""
 
 
-def set_gemini_api_key(key: str, model: str = "gemini-1.5-flash") -> None:
+def set_gemini_api_key(key: str, model: str = "gemini-1.5-pro") -> None:
     global _runtime_gemini_api_key, _runtime_gemini_model
     _runtime_gemini_api_key = key.strip()
     if model:
@@ -39,20 +39,25 @@ def set_gemini_api_key(key: str, model: str = "gemini-1.5-flash") -> None:
 
 def get_gemini_model() -> str:
     global _runtime_gemini_model
-    return _runtime_gemini_model or getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash")
+    return _runtime_gemini_model or getattr(settings, "GEMINI_MODEL", "gemini-1.5-pro")
 
 
-async def call_gemini_api(prompt: str, system_instruction: Optional[str] = None) -> Optional[str]:
+async def call_gemini_api(
+    prompt: str,
+    system_instruction: Optional[str] = None,
+    model: Optional[str] = None,
+) -> Optional[str]:
     """
     Direct asynchronous call to Google Gemini Generative AI REST API.
-    Uses gemini-1.5-flash for rapid, highly accurate engineering responses.
+    Defaults to gemini-1.5-pro (Gemini Advanced) for deep full-stack web development,
+    architectural reasoning, and code synthesis.
     """
     api_key = get_gemini_api_key()
     if not api_key:
         return None
 
-    model = get_gemini_model()
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    effective_model = model or get_gemini_model()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{effective_model}:generateContent?key={api_key}"
 
     contents = []
     if system_instruction:
@@ -62,7 +67,7 @@ async def call_gemini_api(prompt: str, system_instruction: Optional[str] = None)
         })
         contents.append({
             "role": "model",
-            "parts": [{"text": "Understood. I am Engineering PMS AI Copilot, specialized in hardware schematics, firmware, and software debugging."}]
+            "parts": [{"text": "Understood. I am Google Gemini Advanced, Principal Software Architect and Lead Engineering Copilot specializing in full-stack web development, modern cloud infrastructure, and embedded hardware/firmware."}]
         })
 
     contents.append({
@@ -75,7 +80,7 @@ async def call_gemini_api(prompt: str, system_instruction: Optional[str] = None)
         "generationConfig": {
             "temperature": 0.2,
             "topP": 0.95,
-            "maxOutputTokens": 3500,
+            "maxOutputTokens": 4096,
         }
     }
 
@@ -273,6 +278,7 @@ async def solve_task_with_ai(
     auto_post_comment: bool = False,
     current_user: Optional[User] = None,
     custom_instruction: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> TaskSolveResponse:
     """
     Analyzes a bug or task using Google Gemini Generative AI (with expert heuristic fallback),
@@ -339,13 +345,15 @@ Please respond in this exact JSON structure:
 }}
 """
 
+    effective_model = model or get_gemini_model()
     gemini_raw = await call_gemini_api(
         prompt=prompt,
-        system_instruction="You are an expert engineer and software architect. Output clean, valid JSON matching the requested schema."
+        system_instruction="You are Google Gemini Advanced, Principal Full-Stack Software Engineer & System Architect. Analyze full-stack web applications (FastAPI, React, TypeScript, Nginx, PostgreSQL, Docker) and embedded hardware systems with rigorous depth. Output clean, valid JSON matching the requested schema.",
+        model=effective_model,
     )
 
     parsed_solution = None
-    ai_provider = "Google Gemini (gemini-1.5-flash)"
+    ai_provider = f"Google Gemini Advanced ({effective_model})"
 
     if gemini_raw:
         try:
@@ -460,6 +468,7 @@ async def consult_project_copilot(
     project_id: uuid.UUID,
     problem_description: str,
     category: str = "GENERAL",
+    model: Optional[str] = None,
 ) -> ProjectCopilotResponse:
     """
     Project-level AI Copilot.
@@ -510,12 +519,14 @@ Provide an innovative, highly practical engineering response. Include:
 3. Suggested Action Items / New Tasks for the PMS board
 """
 
+    effective_model = model or get_gemini_model()
     gemini_raw = await call_gemini_api(
         prompt=prompt,
-        system_instruction="You are a senior hardware and software engineer. Provide clear, professional, markdown-formatted technical recommendations."
+        system_instruction="You are Google Gemini Advanced, Principal Engineer and System Architect. Provide clear, professional, markdown-formatted technical recommendations, circuit design math, code snippets, and component choices.",
+        model=effective_model,
     )
 
-    ai_provider = "Google Gemini (gemini-1.5-flash)"
+    ai_provider = f"Google Gemini Advanced ({effective_model})"
     if not gemini_raw:
         ai_provider = "Engineering PMS AI Copilot"
         gemini_raw = f"""### 🛠️ Technical Solution & Engineering Ideas for {project.name}

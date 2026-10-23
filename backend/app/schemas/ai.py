@@ -35,6 +35,7 @@ class ProjectCopilotRequest(BaseModel):
     project_id: Optional[uuid.UUID] = None
     problem_description: str
     category: Optional[str] = "GENERAL"  # HARDWARE, FIRMWARE, BUG, ARCHITECTURE, SCHEMATIC
+    model: Optional[str] = "gemini-1.5-pro"
 
 
 class ProjectCopilotResponse(BaseModel):
@@ -46,16 +47,17 @@ class ProjectCopilotResponse(BaseModel):
     circuit_or_code_advice: Optional[str] = None
     suggested_tasks: List[str]
     formatted_markdown: str
-    ai_provider: str = "Google Gemini"
+    ai_provider: str = "Google Gemini Advanced (gemini-1.5-pro)"
 
 
 class AIConfigResponse(BaseModel):
     has_api_key: bool
     provider: str
     model: str
+    available_models: List[str] = ["gemini-1.5-pro", "gemini-2.0-flash", "gemini-1.5-flash"]
     features: List[str]
 
 
 class AIConfigUpdateRequest(BaseModel):
     api_key: str
-    model: Optional[str] = "gemini-1.5-flash"
+    model: Optional[str] = "gemini-1.5-pro"

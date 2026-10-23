@@ -250,8 +250,8 @@ export const TopNav: React.FC<TopNavProps> = ({ isSidebarCollapsed }) => {
         >
           <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
           <span>AI Copilot</span>
-          <span className="hidden md:inline-block px-1.5 py-0.2 rounded text-[9px] font-mono bg-amber-600 text-white font-semibold">
-            Gemini
+          <span className="hidden md:inline-block px-1.5 py-0.2 rounded text-[9px] font-mono bg-purple-600 text-white font-semibold">
+            Gemini Pro
           </span>
         </Link>
 

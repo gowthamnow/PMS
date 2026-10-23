@@ -40,8 +40,8 @@ export const AppLayout: React.FC = () => {
       >
         <Sparkles className="w-5 h-5 text-amber-200 animate-pulse group-hover:rotate-12 transition-transform" />
         <span className="text-xs font-bold tracking-wide">Ask AI Copilot</span>
-        <span className="text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full font-mono">
-          Gemini
+        <span className="text-[10px] bg-purple-900/60 text-purple-200 px-1.5 py-0.5 rounded-full font-mono font-semibold">
+          Gemini Pro
         </span>
       </button>
 

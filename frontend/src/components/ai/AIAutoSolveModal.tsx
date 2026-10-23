@@ -39,11 +39,12 @@ export const AIAutoSolveModal: React.FC<AIAutoSolveModalProps> = ({
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
+  const [selectedModel, setSelectedModel] = useState('gemini-1.5-pro');
   const [solution, setSolution] = useState<TaskSolveResponse | null>(null);
 
   const solveMutation = useMutation({
     mutationFn: ({ autoPost }: { autoPost: boolean }) =>
-      api.ai.solveTask(taskId, autoPost, customPrompt || undefined),
+      api.ai.solveTask(taskId, autoPost, customPrompt || undefined, selectedModel),
     onSuccess: (data) => {
       setSolution(data);
       if (data.comment_posted) {
@@ -122,19 +123,42 @@ export const AIAutoSolveModal: React.FC<AIAutoSolveModalProps> = ({
           )}
         </div>
 
-        {/* Custom instruction prompt input */}
+        {/* Custom instruction prompt input & model selector */}
         {!solution && (
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
-              Optional Technical Focus / Hints:
-            </label>
-            <input
-              type="text"
-              className="w-full px-3 py-2 text-xs rounded-lg border border-border focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-white"
-              placeholder="e.g. Focus on Nginx gzip, React Query cache, or Altium SPI bus pinout..."
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-            />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-purple-600" />
+                  Gemini Model Engine
+                </span>
+                <span className="text-[10px] font-mono text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
+                  Gemini Advanced Active
+                </span>
+              </label>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs rounded-lg border border-purple-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 bg-purple-50/20 font-medium"
+              >
+                <option value="gemini-1.5-pro">✨ Gemini 1.5 Pro (Advanced - Web Dev &amp; Code Synthesis)</option>
+                <option value="gemini-2.0-flash">⚡ Gemini 2.0 Flash (Next-Gen Ultra Fast)</option>
+                <option value="gemini-1.5-flash">🚀 Gemini 1.5 Flash (Lightweight Fast)</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
+                Optional Technical Focus / Hints:
+              </label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-border focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-white"
+                placeholder="e.g. Focus on Nginx gzip, React Query cache, or Altium SPI bus pinout..."
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+              />
+            </div>
           </div>
         )}
 

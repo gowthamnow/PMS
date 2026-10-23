@@ -31,6 +31,7 @@ async def solve_task_endpoint(
     request: Request,
     auto_post_comment: bool = Query(False, description="Automatically post AI solution as comment on task"),
     custom_instruction: Optional[str] = Query(None, description="Custom prompt / focus for AI"),
+    model: Optional[str] = Query(None, description="Gemini model override (e.g. gemini-1.5-pro)"),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -45,6 +46,7 @@ async def solve_task_endpoint(
         auto_post_comment=auto_post_comment,
         current_user=current_user,
         custom_instruction=custom_instruction,
+        model=model,
     )
 
     client_ip = request.client.host if request.client else None
@@ -79,6 +81,7 @@ async def project_copilot_endpoint(
         project_id=project_id,
         problem_description=copilot_in.problem_description,
         category=copilot_in.category or "GENERAL",
+        model=copilot_in.model,
     )
 
     client_ip = request.client.host if request.client else None
@@ -88,7 +91,7 @@ async def project_copilot_endpoint(
         action="AI_PROJECT_COPILOT",
         resource_type="PROJECT",
         resource_id=str(project_id),
-        changes={"query_category": copilot_in.category},
+        changes={"query_category": copilot_in.category, "model": copilot_in.model},
         ip_address=client_ip,
     )
 
@@ -105,13 +108,15 @@ async def get_ai_config(
     api_key = get_gemini_api_key()
     return AIConfigResponse(
         has_api_key=bool(api_key),
-        provider="Google Gemini (Cloud Generative AI)",
+        provider="Google Gemini Advanced (Cloud Generative AI)",
         model=get_gemini_model(),
+        available_models=["gemini-1.5-pro", "gemini-2.0-flash", "gemini-1.5-flash"],
         features=[
             "Task Bug Auto-Resolver & Patch Synthesis",
             "Project Copilot & Engineering Idea Engine",
             "Datasheet & Schematic Analysis",
             "1-Click Technical Comment Auto-Posting",
+            "Deep Full-Stack Web Development & Architecture Mode",
         ],
     )
 
@@ -126,7 +131,8 @@ async def update_ai_config(
     """
     Allows Admin to configure the Google Gemini API Key and model at runtime.
     """
-    set_gemini_api_key(data.api_key, data.model or "gemini-1.5-flash")
+    chosen_model = data.model or "gemini-1.5-pro"
+    set_gemini_api_key(data.api_key, chosen_model)
 
     client_ip = request.client.host if request.client else None
     await log_audit(
@@ -135,7 +141,7 @@ async def update_ai_config(
         action="UPDATE_AI_CONFIG",
         resource_type="SYSTEM",
         resource_id="gemini_ai",
-        changes={"model": data.model or "gemini-1.5-flash"},
+        changes={"model": chosen_model},
         ip_address=client_ip,
     )
 

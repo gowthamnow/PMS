@@ -31,6 +31,7 @@ export const AICopilotPage: React.FC = () => {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-1.5-pro');
   const [customInstruction, setCustomInstruction] = useState<string>('');
 
   const [advisorCategory, setAdvisorCategory] = useState<string>('GENERAL');
@@ -82,12 +83,14 @@ export const AICopilotPage: React.FC = () => {
       taskId,
       autoPost,
       instruction,
+      model,
     }: {
       taskId: string;
       autoPost: boolean;
       instruction?: string;
+      model?: string;
     }) => {
-      return api.ai.solveTask(taskId, autoPost, instruction);
+      return api.ai.solveTask(taskId, autoPost, instruction, model || selectedModel);
     },
     onSuccess: (data) => {
       setBugSolution(data);
@@ -108,12 +111,14 @@ export const AICopilotPage: React.FC = () => {
       projectId,
       problem,
       category,
+      model,
     }: {
       projectId: string;
       problem: string;
       category: string;
+      model?: string;
     }) => {
-      return api.ai.consultProjectCopilot(projectId, problem, category);
+      return api.ai.consultProjectCopilot(projectId, problem, category, model || selectedModel);
     },
     onSuccess: (data) => {
       setAdvisorSolution(data);
@@ -142,7 +147,7 @@ export const AICopilotPage: React.FC = () => {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-white text-xs font-semibold">
               <Sparkles className="w-3.5 h-3.5 text-amber-200" />
-              <span>Google Cloud Generative AI &bull; Gemini 1.5 Flash</span>
+              <span>Google Cloud Generative AI &bull; Gemini Advanced (1.5 Pro)</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
               Engineering AI Copilot &amp; Bug Auto-Resolver
@@ -248,6 +253,27 @@ export const AICopilotPage: React.FC = () => {
                         {t.title} [{t.status}]
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                      Gemini Model Architecture
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                      Gemini Advanced (1.5 Pro)
+                    </span>
+                  </label>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full text-xs rounded-md border border-purple-300 bg-purple-50/20 px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500 font-medium"
+                  >
+                    <option value="gemini-1.5-pro">✨ Gemini 1.5 Pro (Advanced - Deep Web Dev &amp; Patch Synthesis)</option>
+                    <option value="gemini-2.0-flash">⚡ Gemini 2.0 Flash (Next-Gen Ultra Fast)</option>
+                    <option value="gemini-1.5-flash">🚀 Gemini 1.5 Flash (Lightweight Fast)</option>
                   </select>
                 </div>
 
@@ -455,6 +481,27 @@ export const AICopilotPage: React.FC = () => {
                     <option value="FIRMWARE">Firmware &amp; Embedded Systems</option>
                     <option value="SCHEMATIC">Schematic &amp; Component Choice</option>
                     <option value="BUG">Software Defect &amp; Database</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                      Gemini Model Architecture
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                      Gemini Advanced (1.5 Pro)
+                    </span>
+                  </label>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full text-xs rounded-md border border-purple-300 bg-purple-50/20 px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-purple-500 font-medium"
+                  >
+                    <option value="gemini-1.5-pro">✨ Gemini 1.5 Pro (Advanced - Web Dev &amp; Deep Architecture)</option>
+                    <option value="gemini-2.0-flash">⚡ Gemini 2.0 Flash (Next-Gen Ultra Fast)</option>
+                    <option value="gemini-1.5-flash">🚀 Gemini 1.5 Flash (Lightweight Fast)</option>
                   </select>
                 </div>
 
