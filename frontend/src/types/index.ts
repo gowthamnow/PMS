@@ -332,6 +332,7 @@ export interface TaskSolveResponse {
   solution_summary: string;
   action_plan: string[];
   code_fixes: CodeFixItem[];
+  code_patches?: any[];
   testing_steps: string[];
   formatted_markdown: string;
   comment_posted: boolean;

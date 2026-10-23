@@ -274,6 +274,39 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      {/* AI Copilot & Bug Auto-Resolver Announcement & Action Card */}
+      <div className="rounded-xl border border-amber-300 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 p-4 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-amber-600 to-orange-500 flex items-center justify-center text-white shadow-xs shrink-0">
+            <Sparkles className="w-5 h-5 animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-text-primary">
+                Google Cloud Generative AI Copilot &amp; Bug Auto-Resolver
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200/80 text-amber-900 border border-amber-300">
+                Live &amp; Ready
+              </span>
+            </div>
+            <p className="text-xs text-text-muted mt-0.5">
+              Auto-diagnose bugs, synthesize code patches, and consult the AI Copilot on datasheets &amp; circuit roadblocks.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            to="/ai"
+            className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Open AI Copilot</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      </div>
+
       {/* ======================================================== */}
       {/* 1. INDIVIDUAL ENGINEER VIEW */}
       {/* ======================================================== */}

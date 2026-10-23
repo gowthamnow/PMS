@@ -326,6 +326,10 @@ async def add_project_member(
     if not project:
         raise NotFoundError("Project not found")
 
+    # Ensure project and target user belong to the same workspace!
+    if project.workspace_id and target_user.workspace_id and project.workspace_id != target_user.workspace_id:
+        raise ForbiddenError("Cannot add member: User belongs to another workspace. Team members can only access their assigned workspace.")
+
     # If target user does not have an assigned workspace, link them to the project's workspace
     if not target_user.workspace_id and project.workspace_id:
         target_user.workspace_id = project.workspace_id

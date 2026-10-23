@@ -103,14 +103,20 @@ export const UsersPage: React.FC = () => {
 
   // 1. Fetch Users
   const { data, isLoading } = useQuery({
-    queryKey: ['users', { page, search }],
-    queryFn: () => api.users.getUsers(page, 20, search || undefined),
+    queryKey: ['users', { page, search, all_workspaces: true }],
+    queryFn: () =>
+      api.users.getUsers({
+        page,
+        page_size: 20,
+        search: search || undefined,
+        all_workspaces: true,
+      }),
   });
 
   // 2. Fetch all users for member assignment select
   const { data: allUsersData } = useQuery({
     queryKey: ['all-users-lookup'],
-    queryFn: () => api.users.getUsers(1, 100),
+    queryFn: () => api.users.getUsers({ page: 1, page_size: 100, all_workspaces: true }),
   });
   const allUsers = allUsersData?.items || [];
 
@@ -353,6 +359,8 @@ export const UsersPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       queryClient.invalidateQueries({ queryKey: ['workspace-members'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['all-users-lookup'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
       setSelectedUserToAssign('');
       toast.success('Member assigned to workspace');
     },
@@ -369,6 +377,8 @@ export const UsersPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       queryClient.invalidateQueries({ queryKey: ['workspace-members'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['all-users-lookup'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
       toast.success('Member removed from workspace');
     },
     onError: (err: any) => {

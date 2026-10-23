@@ -51,6 +51,8 @@ async def get_project_progress_report(
             return []
         query = query.where(Project.workspace_id == current_user.workspace_id)
         query = query.join(Project.members).where(ProjectMember.user_id == current_user.id)
+    elif current_user.workspace_id:
+        query = query.where(Project.workspace_id == current_user.workspace_id)
     p_res = await db.execute(query)
     projects = p_res.scalars().all()
 
@@ -92,6 +94,8 @@ async def get_team_workload_report(
         if not current_user.workspace_id:
             return []
         users_stmt = users_stmt.where(User.workspace_id == current_user.workspace_id)
+    elif current_user.workspace_id:
+        users_stmt = users_stmt.where(User.workspace_id == current_user.workspace_id)
     users_stmt = users_stmt.order_by(User.full_name)
     users_res = await db.execute(users_stmt)
     users = users_res.scalars().all()
@@ -103,9 +107,13 @@ async def get_team_workload_report(
     for u in users:
         task_stmt = (
             select(Task.status, func.count(Task.id))
-            .where(Task.assignee_id == u.id)
-            .group_by(Task.status)
+            .where(Task.assignee_id == u.id, Task.is_deleted == False)
         )
+        if current_user.workspace_id:
+            task_stmt = task_stmt.join(Project, Project.id == Task.project_id).where(
+                Project.workspace_id == current_user.workspace_id
+            )
+        task_stmt = task_stmt.group_by(Task.status)
         task_res = await db.execute(task_stmt)
         tasks_by_status = {s.value: 0 for s in TaskStatus}
         total = 0
@@ -118,6 +126,10 @@ async def get_team_workload_report(
             TimeEntry.user_id == u.id,
             TimeEntry.work_date >= start_of_week,
         )
+        if current_user.workspace_id:
+            hours_stmt = hours_stmt.join(Project, Project.id == TimeEntry.project_id).where(
+                Project.workspace_id == current_user.workspace_id
+            )
         hours_res = await db.execute(hours_stmt)
         hours_this_week = float(hours_res.scalar_one())
 
@@ -165,6 +177,10 @@ async def get_time_log_report(
         user_proj_subq = select(ProjectMember.project_id).where(ProjectMember.user_id == current_user.id)
         query = query.where(TimeEntry.project_id.in_(user_proj_subq))
         count_query = count_query.where(TimeEntry.project_id.in_(user_proj_subq))
+    elif current_user.workspace_id:
+        ws_proj_subq = select(Project.id).where(Project.workspace_id == current_user.workspace_id)
+        query = query.where(TimeEntry.project_id.in_(ws_proj_subq))
+        count_query = count_query.where(TimeEntry.project_id.in_(ws_proj_subq))
 
     if user_id:
         query = query.where(TimeEntry.user_id == user_id)
@@ -236,6 +252,8 @@ async def get_overdue_tasks_report(
     if current_user.role != UserRole.ADMIN:
         user_proj_subq = select(ProjectMember.project_id).where(ProjectMember.user_id == current_user.id)
         query = query.where(Task.project_id.in_(user_proj_subq))
+    elif current_user.workspace_id:
+        query = query.join(Project, Project.id == Task.project_id).where(Project.workspace_id == current_user.workspace_id)
 
     res = await db.execute(query)
     tasks = res.scalars().all()

@@ -5,7 +5,7 @@ import { Task } from '../../types';
 import { PriorityBadge } from './PriorityBadge';
 import { Avatar } from '../ui/Avatar';
 import { formatDate, isOverdue, isDueSoon, cn } from '../../lib/utils';
-import { GitCommit, MessageSquare, Calendar } from 'lucide-react';
+import { GitCommit, MessageSquare, Calendar, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export interface TaskCardProps {
@@ -56,11 +56,20 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
         isDragging && 'opacity-50 border-copper-400 shadow-modal ring-1 ring-copper-400 rotate-1'
       )}
     >
-      {/* Top row: Task number & priority badge */}
+      {/* Top row: Task number, AI badge & priority badge */}
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs font-semibold text-text-muted hover:text-copper-700">
-          #ENG-{task.task_number ? task.task_number.toString().padStart(3, '0') : (task.id ? task.id.slice(0, 6) : '000')}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-xs font-semibold text-text-muted hover:text-copper-700">
+            #ENG-{task.task_number ? task.task_number.toString().padStart(3, '0') : (task.id ? task.id.slice(0, 6) : '000')}
+          </span>
+          <span
+            className="flex items-center gap-0.5 text-[9px] font-bold text-amber-800 bg-amber-100/90 px-1.5 py-0.2 rounded border border-amber-300"
+            title="Auto-solve with Gemini AI"
+          >
+            <Sparkles className="w-2.5 h-2.5 text-amber-600 animate-pulse" />
+            AI
+          </span>
+        </div>
         <PriorityBadge priority={task.priority} size="sm" />
       </div>
 
@@ -118,11 +127,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
           {task.assignee ? (
             <Avatar name={task.assignee.full_name} size="xs" />
           ) : (
-            <div
-              className="w-5 h-5 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-[9px] text-text-muted"
-              title="Unassigned"
-            >
-              —
+            <div className="w-5 h-5 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-[9px] text-text-muted">
+              ?
             </div>
           )}
         </div>

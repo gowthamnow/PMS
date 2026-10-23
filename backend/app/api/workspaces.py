@@ -1,13 +1,13 @@
 import uuid
 from typing import Any, List
 from fastapi import APIRouter, Depends, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_active_user, get_db, require_admin
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
-from app.models.project import Project
+from app.models.project import Project, ProjectMember
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace
 from app.schemas.user import UserResponse
@@ -294,8 +294,21 @@ async def assign_member(
     if not user:
         raise NotFoundError("User not found")
 
-    old_ws_id = str(user.workspace_id) if user.workspace_id else None
+    old_ws_id = user.workspace_id
     user.workspace_id = workspace_id
+
+    # Ensure clean workspace confinement: if user was in a different workspace, remove them from projects in the old workspace
+    if old_ws_id and old_ws_id != workspace_id:
+        old_projs_res = await db.execute(select(Project.id).where(Project.workspace_id == old_ws_id))
+        old_proj_ids = old_projs_res.scalars().all()
+        if old_proj_ids:
+            await db.execute(
+                delete(ProjectMember).where(
+                    ProjectMember.user_id == user.id,
+                    ProjectMember.project_id.in_(old_proj_ids),
+                )
+            )
+
     await db.commit()
 
     client_ip = request.client.host if request.client else None
@@ -305,7 +318,7 @@ async def assign_member(
         action="ASSIGN_WORKSPACE_MEMBER",
         resource_type="USER",
         resource_id=str(user.id),
-        changes={"previous_workspace": old_ws_id, "new_workspace": str(workspace_id)},
+        changes={"previous_workspace": str(old_ws_id) if old_ws_id else None, "new_workspace": str(workspace_id)},
         ip_address=client_ip,
     )
 
@@ -327,6 +340,18 @@ async def remove_member(
 
     if user.workspace_id == workspace_id:
         user.workspace_id = None
+
+        # Cleanly remove from all projects in this workspace
+        ws_projs_res = await db.execute(select(Project.id).where(Project.workspace_id == workspace_id))
+        ws_proj_ids = ws_projs_res.scalars().all()
+        if ws_proj_ids:
+            await db.execute(
+                delete(ProjectMember).where(
+                    ProjectMember.user_id == user.id,
+                    ProjectMember.project_id.in_(ws_proj_ids),
+                )
+            )
+
         await db.commit()
 
         client_ip = request.client.host if request.client else None

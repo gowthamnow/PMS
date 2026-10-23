@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 import { WorkloadItem, Task } from '../types';
 import { Table, Column } from '../components/ui/Table';
@@ -23,6 +24,7 @@ import {
 import toast from 'react-hot-toast';
 
 export const TeamPage: React.FC = () => {
+  const { user } = useAuth();
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
@@ -33,13 +35,13 @@ export const TeamPage: React.FC = () => {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['reports', 'team-workload', { project_id: selectedProjectId }],
+    queryKey: ['reports', 'team-workload', { project_id: selectedProjectId, workspace_id: user?.workspace_id }],
     queryFn: () => api.reports.getTeamWorkload(),
   });
 
   // Fetch Projects for filter
   const { data: projectsData } = useQuery({
-    queryKey: ['projects', { page: 1, page_size: 50 }],
+    queryKey: ['projects', { page: 1, page_size: 50, workspace_id: user?.workspace_id }],
     queryFn: () => api.projects.getProjects({ page: 1, page_size: 50 }),
   });
 
@@ -94,7 +96,12 @@ export const TeamPage: React.FC = () => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-border">
         <div>
-          <h1 className="text-xl font-bold text-text-primary tracking-tight">Team Progress &amp; Capacity</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-bold text-text-primary tracking-tight">Team Progress &amp; Capacity</h1>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-copper-100 text-copper-800 border border-copper-200">
+              🏢 {user?.workspace_name || 'All Workspaces (Global)'}
+            </span>
+          </div>
           <p className="text-xs text-text-secondary mt-0.5">
             Monitor engineering capacity, assigned workload, and logged hours.
           </p>

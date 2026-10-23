@@ -133,10 +133,16 @@ export const ProjectDetailPage: React.FC = () => {
     enabled: !!id,
   });
 
-  // 5. Fetch Users (for member adding & filter)
+  // 5. Fetch Users (strictly scoped to this project's workspace)
   const { data: allUsersData } = useQuery({
-    queryKey: ['users', { page: 1, page_size: 100 }],
-    queryFn: () => api.users.getUsers(1, 100),
+    queryKey: ['users', { workspace_id: project?.workspace_id, page: 1, page_size: 100 }],
+    queryFn: () =>
+      api.users.getUsers({
+        workspace_id: project?.workspace_id || undefined,
+        page: 1,
+        page_size: 100,
+      }),
+    enabled: !!project,
   });
 
   // 6. Fetch Attachments
@@ -732,7 +738,11 @@ export const ProjectDetailPage: React.FC = () => {
           >
             <option value="">Select an engineer or manager</option>
             {allUsersData?.items
-              ?.filter((u) => !members.some((m) => m.user_id === u.id))
+              ?.filter(
+                (u) =>
+                  (!project?.workspace_id || u.workspace_id === project?.workspace_id) &&
+                  !members.some((m) => m.user_id === u.id)
+              )
               .map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.full_name} ({u.email})

@@ -34,6 +34,7 @@ async def list_users(
     role: Optional[UserRole] = None,
     search: Optional[str] = None,
     workspace_id: Optional[uuid.UUID] = Query(None),
+    all_workspaces: bool = Query(False),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -46,9 +47,21 @@ async def list_users(
         if current_user.workspace_id:
             query = query.where(User.workspace_id == current_user.workspace_id)
             count_query = count_query.where(User.workspace_id == current_user.workspace_id)
-    elif workspace_id:
-        query = query.where(User.workspace_id == workspace_id)
-        count_query = count_query.where(User.workspace_id == workspace_id)
+        else:
+            return {
+                "items": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "pages": 0,
+            }
+    else:
+        if workspace_id and not hasattr(workspace_id, "default"):
+            query = query.where(User.workspace_id == workspace_id)
+            count_query = count_query.where(User.workspace_id == workspace_id)
+        elif not all_workspaces and current_user.workspace_id:
+            query = query.where(User.workspace_id == current_user.workspace_id)
+            count_query = count_query.where(User.workspace_id == current_user.workspace_id)
 
     if role:
         query = query.where(User.role == role)
