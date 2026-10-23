@@ -1,0 +1,20 @@
+[Unit]
+Description=Engineering PMS — Autonomous AI Task Worker
+Documentation=https://github.com/gowthamnow/PMS
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=gowthamthangaraj18
+WorkingDirectory=/home/gowthamthangaraj18/engineering-pms
+ExecStart=/usr/bin/python3 scripts/pms_ai_worker_vm.py --watch --interval 30
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pms-ai-worker
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
