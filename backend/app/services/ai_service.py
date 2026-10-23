@@ -470,7 +470,6 @@ async def consult_project_copilot(
     stmt = (
         select(Project)
         .options(
-            selectinload(Project.tasks),
             selectinload(Project.members),
         )
         .where(Project.id == project_id)
@@ -480,12 +479,15 @@ async def consult_project_copilot(
     if not project:
         raise ValueError(f"Project with ID {project_id} not found")
 
+    # Fetch active tasks for this project
+    t_stmt = select(Task).where(Task.project_id == project_id)
+    project_tasks = (await db.execute(t_stmt)).scalars().all()
+    tasks_summary = ", ".join([f"#{t.task_number or ''} {t.title} [{t.status.value}]" for t in project_tasks[:10]]) or "No tasks"
+
     # Fetch vault files & folders
     vf_stmt = select(ProjectVaultFile).where(ProjectVaultFile.project_id == project_id)
     vault_files = (await db.execute(vf_stmt)).scalars().all()
     files_summary = ", ".join([f"{f.filename} ({f.category})" for f in vault_files[:10]]) or "No vault files uploaded yet"
-
-    tasks_summary = ", ".join([f"#{t.task_number} {t.title} [{t.status.value}]" for t in (project.tasks or [])[:10]]) or "No tasks"
 
     prompt = f"""You are the Lead Systems & Hardware/Firmware Engineer consulting on the project "{project.name}".
 An engineer on the team has reported a roadblock/question and is asking for your ideas, troubleshooting steps, and technical solutions.

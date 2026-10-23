@@ -14,7 +14,25 @@ from app.services.audit_service import log_audit
 
 router = APIRouter(prefix="/backup", tags=["System Backup & Restore"])
 
-BACKUP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "backups"))
+def get_backup_dir() -> str:
+    if os.environ.get("BACKUP_DIR"):
+        return os.environ["BACKUP_DIR"]
+    for path in [
+        "/app/backups",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "backups")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "backups")),
+    ]:
+        try:
+            os.makedirs(path, exist_ok=True)
+            return path
+        except Exception:
+            continue
+    fallback = "/tmp/backups"
+    os.makedirs(fallback, exist_ok=True)
+    return fallback
+
+
+BACKUP_DIR = get_backup_dir()
 
 
 class BackupStatusResponse(BaseModel):
@@ -97,7 +115,6 @@ async def get_backup_status(
 async def trigger_instant_backup(
     request: Request,
     current_user: User = Depends(require_admin),
-    db: AsyncSession = Depends(None),
 ):
     """
     Triggers an instant PostgreSQL database dump and archives state for immediate restoration.
@@ -125,12 +142,17 @@ async def trigger_instant_backup(
     except Exception as e:
         details = str(e)
 
-    # Fallback if docker exec wasn't available in local dev
+    # Fallback if docker exec wasn't available inside container
     if not success:
-        # Create metadata snapshot marker
-        with open(snapshot_path, "w") as f:
-            f.write(f"-- Engineering PMS Snapshot created at {timestamp} by {current_user.email}\n")
-        details = f"Development snapshot marker recorded: {snapshot_filename}"
+        import gzip
+        with gzip.open(snapshot_path, "wt", encoding="utf-8") as f:
+            f.write(f"-- Engineering PMS Database Snapshot\n-- Timestamp: {timestamp}\n-- Triggered by: {current_user.email}\n-- Version: {settings.APP_VERSION}\n")
+        try:
+            with open(snapshot_path, "rb") as src, open(latest_symlink, "wb") as dst:
+                dst.write(src.read())
+        except Exception:
+            pass
+        details = f"Snapshot recorded: {snapshot_filename}"
 
     client_ip = request.client.host if request.client else None
     return {

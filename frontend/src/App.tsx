@@ -1,26 +1,32 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './lib/auth';
 import { AppLayout } from './components/layout/AppLayout';
 import { Spinner } from './components/ui/Spinner';
 
-// Pages
-import { LoginPage } from './pages/LoginPage';
-import { LobbyPage } from './pages/LobbyPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { ProjectsPage } from './pages/ProjectsPage';
-import { ProjectDetailPage } from './pages/ProjectDetailPage';
-import { TaskBoardPage } from './pages/TaskBoardPage';
-import { TaskDetailPage } from './pages/TaskDetailPage';
-import { MyTasksPage } from './pages/MyTasksPage';
-import { TeamPage } from './pages/TeamPage';
-import { MessagesPage } from './pages/MessagesPage';
-import { TimesheetPage } from './pages/TimesheetPage';
-import { ReportsPage } from './pages/ReportsPage';
-import { NotificationsPage } from './pages/NotificationsPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { UsersPage } from './pages/admin/UsersPage';
-import { SystemPage } from './pages/admin/SystemPage';
+// Fast route-based code splitting: Pages are lazy loaded on demand
+const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })));
+const LobbyPage = lazy(() => import('./pages/LobbyPage').then((m) => ({ default: m.LobbyPage })));
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })));
+const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })));
+const TaskBoardPage = lazy(() => import('./pages/TaskBoardPage').then((m) => ({ default: m.TaskBoardPage })));
+const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage').then((m) => ({ default: m.TaskDetailPage })));
+const MyTasksPage = lazy(() => import('./pages/MyTasksPage').then((m) => ({ default: m.MyTasksPage })));
+const TeamPage = lazy(() => import('./pages/TeamPage').then((m) => ({ default: m.TeamPage })));
+const MessagesPage = lazy(() => import('./pages/MessagesPage').then((m) => ({ default: m.MessagesPage })));
+const TimesheetPage = lazy(() => import('./pages/TimesheetPage').then((m) => ({ default: m.TimesheetPage })));
+const ReportsPage = lazy(() => import('./pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const UsersPage = lazy(() => import('./pages/admin/UsersPage').then((m) => ({ default: m.UsersPage })));
+const SystemPage = lazy(() => import('./pages/admin/SystemPage').then((m) => ({ default: m.SystemPage })));
+
+const PageLoader: React.FC = () => (
+  <div className="py-20 flex flex-col items-center justify-center gap-3">
+    <Spinner size="md" />
+  </div>
+);
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -109,58 +115,60 @@ const AdminRoute: React.FC<{ children: React.ReactElement }> = ({ children }) =>
 
 export const App: React.FC = () => {
   return (
-    <Routes>
-      {/* Public Routes */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/lobby" element={<LobbyPage />} />
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/lobby" element={<LobbyPage />} />
 
-      {/* Protected Routes wrapped in AppLayout */}
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <ErrorBoundary>
-              <AppLayout />
-            </ErrorBoundary>
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="projects" element={<ProjectsPage />} />
-        <Route path="projects/:id" element={<ProjectDetailPage />} />
-        <Route path="projects/:id/board" element={<TaskBoardPage />} />
-        <Route path="tasks" element={<MyTasksPage />} />
-        <Route path="tasks/:id" element={<TaskDetailPage />} />
-        <Route path="messages" element={<MessagesPage />} />
-        <Route path="team" element={<TeamPage />} />
-        <Route path="timesheet" element={<TimesheetPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-
-        {/* Admin Routes */}
+        {/* Protected Routes wrapped in AppLayout */}
         <Route
-          path="admin/users"
+          path="/"
           element={
-            <AdminRoute>
-              <UsersPage />
-            </AdminRoute>
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <AppLayout />
+              </ErrorBoundary>
+            </ProtectedRoute>
           }
-        />
-        <Route
-          path="admin/system"
-          element={
-            <AdminRoute>
-              <SystemPage />
-            </AdminRoute>
-          }
-        />
-      </Route>
+        >
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="projects" element={<ProjectsPage />} />
+          <Route path="projects/:id" element={<ProjectDetailPage />} />
+          <Route path="projects/:id/board" element={<TaskBoardPage />} />
+          <Route path="tasks" element={<MyTasksPage />} />
+          <Route path="tasks/:id" element={<TaskDetailPage />} />
+          <Route path="messages" element={<MessagesPage />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="timesheet" element={<TimesheetPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
 
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+          {/* Admin Routes */}
+          <Route
+            path="admin/users"
+            element={
+              <AdminRoute>
+                <UsersPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="admin/system"
+            element={
+              <AdminRoute>
+                <SystemPage />
+              </AdminRoute>
+            }
+          />
+        </Route>
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </Suspense>
   );
 };
 

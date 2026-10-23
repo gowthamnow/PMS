@@ -32,7 +32,7 @@ class TaskSolveResponse(BaseModel):
 
 
 class ProjectCopilotRequest(BaseModel):
-    project_id: uuid.UUID
+    project_id: Optional[uuid.UUID] = None
     problem_description: str
     category: Optional[str] = "GENERAL"  # HARDWARE, FIRMWARE, BUG, ARCHITECTURE, SCHEMATIC
 
