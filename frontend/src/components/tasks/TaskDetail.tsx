@@ -58,6 +58,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
   const [isAISolveModalOpen, setIsAISolveModalOpen] = useState(false);
 
   const isAdminOrManager = currentUser?.role === 'ADMIN' || currentUser?.role === 'PROJECT_MANAGER';
+  const isAdmin = currentUser?.role === 'ADMIN';
 
   // 1. Fetch Task
   const {
@@ -97,6 +98,19 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
       toast.success('Comment posted');
     },
     onError: () => toast.error('Failed to post comment'),
+  });
+
+  // Delete Comment / Update Mutation (Admin Only)
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: string) => api.tasks.deleteComment(taskId, commentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      toast.success('Update deleted successfully');
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || 'Failed to delete update';
+      toast.error(msg);
+    },
   });
 
   // Log Time Mutation
@@ -340,7 +354,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
             ) : (
               <div className="divide-y divide-border border border-border rounded-lg bg-white overflow-hidden text-xs">
                 {comments.map((c) => (
-                  <div key={c.id} className="p-3.5 flex flex-col gap-1.5 hover:bg-slate-50/50">
+                  <div key={c.id} className="p-3.5 flex flex-col gap-1.5 hover:bg-slate-50/50 group">
                     <div className="flex items-center justify-between text-[11px]">
                       <div className="flex items-center gap-2">
                         <Avatar name={c.user?.full_name || 'Engineer'} size="xs" />
@@ -348,7 +362,24 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
                           {c.user?.full_name || c.user?.username}
                         </span>
                       </div>
-                      <span className="text-text-muted">{formatRelativeTime(c.created_at)}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-text-muted">{formatRelativeTime(c.created_at)}</span>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm('Are you sure you want to delete this update?')) {
+                                deleteCommentMutation.mutate(c.id);
+                              }
+                            }}
+                            disabled={deleteCommentMutation.isPending}
+                            className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors cursor-pointer"
+                            title="Delete update (Admin only)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className="text-text-primary whitespace-pre-wrap leading-relaxed pl-6">
                       {c.content}

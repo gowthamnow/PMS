@@ -57,7 +57,7 @@ def run_remote_sql(sql: str) -> str:
         "-o",
         "StrictHostKeyChecking=no",
         REMOTE_HOST,
-        "docker exec -i engineering-pms-postgres-1 psql -U pms_user -d pms_db -t -A",
+        "sudo docker exec -i engineering-pms-postgres-1 psql -U pms_user -d pms_db -t -A",
     ]
     try:
         proc = subprocess.run(
@@ -186,8 +186,8 @@ def sync_to_cloud():
     print("  ☁️ Syncing changes to cloud instance...")
     # Tar frontend dist and copy over
     run_cmd("tar -czf frontend_dist.tar.gz -C frontend/dist .")
-    run_cmd(f'scp -i "{SSH_KEY}" -o StrictHostKeyChecking=no frontend_dist.tar.gz {REMOTE_HOST}:/home/ubuntu/engineering-pms/')
-    run_cmd(f'ssh -i "{SSH_KEY}" -o StrictHostKeyChecking=no {REMOTE_HOST} "tar -xzf /home/ubuntu/engineering-pms/frontend_dist.tar.gz -C /home/ubuntu/engineering-pms/frontend/dist/ && docker cp /home/ubuntu/engineering-pms/frontend/dist/. engineering-pms-frontend-1:/usr/share/nginx/html/ && docker restart engineering-pms-frontend-1 && rm /home/ubuntu/engineering-pms/frontend_dist.tar.gz"')
+    run_cmd(f'scp -i "{SSH_KEY}" -o StrictHostKeyChecking=no frontend_dist.tar.gz {REMOTE_HOST}:~/engineering-pms/')
+    run_cmd(f'ssh -i "{SSH_KEY}" -o StrictHostKeyChecking=no {REMOTE_HOST} "tar -xzf ~/engineering-pms/frontend_dist.tar.gz -C ~/engineering-pms/frontend/dist/ && sudo docker cp ~/engineering-pms/frontend/dist/. engineering-pms-frontend-1:/usr/share/nginx/html/ && sudo docker restart engineering-pms-frontend-1 && rm ~/engineering-pms/frontend_dist.tar.gz"')
     if os.path.exists(REPO_ROOT / "frontend_dist.tar.gz"):
         os.remove(REPO_ROOT / "frontend_dist.tar.gz")
     print("  ✅ Cloud deployment updated and live!")

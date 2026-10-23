@@ -80,6 +80,51 @@ async def test_add_comment(
 
 
 @pytest.mark.asyncio
+async def test_delete_comment_admin_only(
+    test_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_headers: dict[str, str],
+    engineer_headers: dict[str, str],
+    engineer_user: User,
+    sample_project: Project,
+    sample_task: Task,
+):
+    # Add engineer to project members so task access passes
+    member = ProjectMember(
+        id=uuid.uuid4(),
+        project_id=sample_project.id,
+        user_id=engineer_user.id,
+        role=ProjectRole.ENGINEER,
+    )
+    db_session.add(member)
+    await db_session.commit()
+
+    # 1. Add a comment
+    post_res = await test_client.post(
+        f"/api/tasks/{sample_task.id}/comments",
+        headers=admin_headers,
+        json={"content": "Important update to be tested for deletion."},
+    )
+    assert post_res.status_code == 201
+    comment_id = post_res.json()["id"]
+
+    # 2. Non-admin engineer attempts to delete comment -> must return 403 Forbidden
+    eng_del_res = await test_client.delete(
+        f"/api/tasks/{sample_task.id}/comments/{comment_id}",
+        headers=engineer_headers,
+    )
+    assert eng_del_res.status_code == 403
+    assert "administrators" in eng_del_res.json().get("detail", "").lower()
+
+    # 3. Admin deletes comment -> 200 OK
+    admin_del_res = await test_client.delete(
+        f"/api/tasks/{sample_task.id}/comments/{comment_id}",
+        headers=admin_headers,
+    )
+    assert admin_del_res.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_log_time(
     test_client: AsyncClient,
     admin_headers: dict[str, str],
