@@ -129,12 +129,13 @@ def post_task_comment(task_id: str, comment_text: str):
     """Inserts a completion comment from the AI Engineer on the task."""
     escaped_comment = comment_text.replace("'", "''")
     sql = f"""
-    INSERT INTO task_comments (id, task_id, user_id, content, created_at, updated_at)
+    INSERT INTO task_comments (id, task_id, user_id, content, is_edited, created_at, updated_at)
     VALUES (
         gen_random_uuid(),
         '{task_id}',
         (SELECT id FROM users WHERE username = 'ai_engineer' LIMIT 1),
         '{escaped_comment}',
+        false,
         CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP
     );

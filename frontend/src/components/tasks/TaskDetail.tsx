@@ -293,6 +293,79 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
             )}
           </div>
 
+          {/* AI Autonomous Status Banner */}
+          {task.assignee?.username === 'ai_engineer' && (
+            <div className="rounded-lg border overflow-hidden shadow-2xs">
+              {task.status === 'TODO' && (
+                <div className="bg-amber-50/80 border-amber-300 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-4 h-4 animate-pulse" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                        Assigned to Gemini AI Engineer
+                        <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded font-normal">
+                          Queued / Waiting to Run
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-amber-800/90 mt-0.5">
+                        Click &quot;AI Auto-Solve Bug&quot; above or run the background worker to synthesize the fix and push to Git.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 shadow-xs"
+                    leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                    onClick={() => setIsAISolveModalOpen(true)}
+                  >
+                    Solve Bug Now
+                  </Button>
+                </div>
+              )}
+
+              {task.status === 'IN_PROGRESS' && (
+                <div className="bg-blue-50/80 border-blue-300 p-3.5 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-700 flex items-center justify-center shrink-0">
+                    <Spinner size="sm" className="text-blue-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                      Gemini AI Engineer is Actively Working
+                      <span className="text-[10px] bg-blue-200 text-blue-900 px-1.5 py-0.2 rounded font-normal">
+                        In Progress
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-blue-800/90 mt-0.5">
+                      Diagnosing root cause, formulating code patches, and preparing production build verification.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {task.status === 'DONE' && (
+                <div className="bg-emerald-50/80 border-emerald-300 p-3.5 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-700 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                      Resolved by Gemini AI Engineer
+                      <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-normal">
+                        Completed &amp; Pushed
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-emerald-800/90 mt-0.5">
+                      Solution report, technical diagnostics, and verification details are logged in Bench Notes &amp; Updates below.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Description */}
           <div className="flex flex-col gap-1.5">
             <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
