@@ -338,6 +338,8 @@ export interface TaskSolveResponse {
   comment_posted: boolean;
   comment_id?: string;
   ai_provider: string;
+  tokens_used?: number;
+  remaining_quota?: number;
 }
 
 export interface ProjectCopilotResponse {
@@ -350,6 +352,33 @@ export interface ProjectCopilotResponse {
   suggested_tasks: string[];
   formatted_markdown: string;
   ai_provider: string;
+  tokens_used?: number;
+  remaining_quota?: number;
+}
+
+export interface AIChatRequest {
+  message: string;
+  project_id?: string;
+  model?: string;
+}
+
+export interface AIChatResponse {
+  reply: string;
+  tokens_used: number;
+  remaining_quota: number;
+  ai_provider: string;
+}
+
+export interface AIConfigInfo {
+  has_api_key: boolean;
+  provider: string;
+  model: string;
+  available_models?: string[];
+  features: string[];
+  member_daily_limit: number;
+  member_max_tokens: number;
+  user_remaining_quota?: number;
+  is_admin: boolean;
 }
 
 export interface BackupStatus {

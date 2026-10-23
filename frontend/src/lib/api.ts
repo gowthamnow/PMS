@@ -21,6 +21,8 @@ import {
   ProjectVaultStats,
   TaskSolveResponse,
   ProjectCopilotResponse,
+  AIChatResponse,
+  AIConfigInfo,
   BackupStatus,
 } from '../types';
 
@@ -351,6 +353,12 @@ export const api = {
   },
 
   ai: {
+    chat: (message: string, projectId?: string, model?: string): Promise<AIChatResponse> =>
+      apiClient.post('/ai/chat', {
+        message,
+        project_id: projectId || undefined,
+        model: model || 'gemini-1.5-pro',
+      }),
     solveTask: (taskId: string, autoPostComment?: boolean, customInstruction?: string, model?: string): Promise<TaskSolveResponse> => {
       const q = new URLSearchParams();
       if (autoPostComment) q.append('auto_post_comment', 'true');
@@ -365,7 +373,7 @@ export const api = {
         category: category || 'GENERAL',
         model: model || 'gemini-1.5-pro',
       }),
-    getConfig: (): Promise<{ has_api_key: boolean; provider: string; model: string; available_models?: string[]; features: string[] }> =>
+    getConfig: (): Promise<AIConfigInfo> =>
       apiClient.get('/ai/config'),
     updateConfig: (apiKey: string, model?: string): Promise<any> =>
       apiClient.post('/ai/config', { api_key: apiKey, model: model || 'gemini-1.5-pro' }),

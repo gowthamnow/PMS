@@ -21,7 +21,6 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then((m
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage').then((m) => ({ default: m.UsersPage })));
 const SystemPage = lazy(() => import('./pages/admin/SystemPage').then((m) => ({ default: m.SystemPage })));
-const AICopilotPage = lazy(() => import('./pages/AICopilotPage').then((m) => ({ default: m.AICopilotPage })));
 
 const PageLoader: React.FC = () => (
   <div className="py-20 flex flex-col items-center justify-center gap-3">
@@ -140,7 +139,7 @@ export const App: React.FC = () => {
           <Route path="projects/:id/board" element={<TaskBoardPage />} />
           <Route path="tasks" element={<MyTasksPage />} />
           <Route path="tasks/:id" element={<TaskDetailPage />} />
-          <Route path="ai" element={<AICopilotPage />} />
+          <Route path="ai" element={<Navigate to="/dashboard" replace />} />
           <Route path="messages" element={<MessagesPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="timesheet" element={<TimesheetPage />} />

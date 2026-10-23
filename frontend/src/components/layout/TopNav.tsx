@@ -245,13 +245,13 @@ export const TopNav: React.FC<TopNavProps> = ({ isSidebarCollapsed }) => {
         {/* Engineering AI Copilot Header Pill */}
         <Link
           to="/ai"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/10 via-orange-500/15 to-amber-500/10 hover:from-amber-500/20 hover:to-orange-500/25 border border-amber-300 text-amber-900 text-xs font-bold transition-all shadow-2xs hover:shadow-xs group"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/10 via-orange-500/15 to-amber-500/10 hover:from-amber-500/20 hover:to-orange-500/25 border border-amber-300 text-amber-900 text-xs font-bold transition-all shadow-2xs hover:shadow-xs group cursor-pointer"
           title="Open Engineering AI Copilot Hub"
         >
           <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
           <span>AI Copilot</span>
           <span className="hidden md:inline-block px-1.5 py-0.2 rounded text-[9px] font-mono bg-purple-600 text-white font-semibold">
-            Gemini Pro
+            Gemini Advanced
           </span>
         </Link>
 

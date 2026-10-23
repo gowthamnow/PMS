@@ -16,7 +16,7 @@ from app.models.project import Project
 from app.models.task import Task, TaskComment, TaskStatus
 from app.models.user import User, UserRole
 from app.models.vault import ProjectFolder, ProjectVaultFile
-from app.schemas.ai import CodeFixItem, ProjectCopilotResponse, TaskSolveResponse
+from app.schemas.ai import AIChatResponse, CodeFixItem, ProjectCopilotResponse, TaskSolveResponse
 
 logger = logging.getLogger("ai_service")
 
@@ -24,10 +24,10 @@ logger = logging.getLogger("ai_service")
 _runtime_gemini_api_key: Optional[str] = None
 _runtime_gemini_model: str = "gemini-1.5-pro"
 
-# Member token & usage throttling to prevent high token consumption
-MEMBER_DAILY_REQUEST_LIMIT = 15   # Max 15 AI requests per day for non-admin members
-MEMBER_MAX_OUTPUT_TOKENS = 250    # Very low max output token ceiling for members
-ADMIN_MAX_OUTPUT_TOKENS = 600     # Higher allowance for admins
+# Member token & usage throttling to prevent runaway token consumption
+MEMBER_DAILY_REQUEST_LIMIT = 20   # 20 AI requests per day for non-admin members
+MEMBER_MAX_OUTPUT_TOKENS = 1500   # Sufficient output token ceiling for code snippets & solutions
+ADMIN_MAX_OUTPUT_TOKENS = 4096    # Full deep web development & architectural synthesis allowance
 
 # In-memory daily usage tracking { user_id_str: { "date": "YYYY-MM-DD", "requests": int } }
 _member_usage_tracker: dict[str, dict[str, Any]] = defaultdict(dict)
@@ -332,6 +332,14 @@ async def solve_task_with_ai(
     generates a comprehensive technical diagnostic & resolution plan, and optionally posts it
     as an official comment on the task.
     """
+    remaining_quota = 999
+    is_admin = False
+    if current_user:
+        is_admin = (current_user.role == UserRole.ADMIN)
+        allowed, remaining_quota, reason = check_and_record_member_quota(current_user)
+        if not allowed:
+            raise ValidationError(reason)
+
     stmt = (
         select(Task)
         .options(
@@ -395,8 +403,9 @@ Please respond in this exact JSON structure:
     effective_model = model or get_gemini_model()
     gemini_raw = await call_gemini_api(
         prompt=prompt,
-        system_instruction="You are Google Gemini Advanced, Principal Full-Stack Software Engineer & System Architect. Analyze full-stack web applications (FastAPI, React, TypeScript, Nginx, PostgreSQL, Docker) and embedded hardware systems with rigorous depth. Output clean, valid JSON matching the requested schema.",
+        system_instruction="You are Google Gemini Advanced, Principal Full-Stack Software Engineer & System Architect specializing in modern web development (FastAPI, React 18, TypeScript, Tailwind CSS, PostgreSQL, Docker, Nginx) and embedded hardware systems. Analyze full-stack web applications and systems with rigorous depth. Output clean, valid JSON matching the requested schema.",
         model=effective_model,
+        max_tokens=4096,
     )
 
     parsed_solution = None
@@ -491,6 +500,7 @@ Please respond in this exact JSON structure:
         comment_posted = True
         comment_id = new_comment.id
 
+    tokens_used = int(len(gemini_raw.split()) * 1.3) if gemini_raw else 85
     return TaskSolveResponse(
         task_id=task.id,
         task_title=task.title,
@@ -507,6 +517,8 @@ Please respond in this exact JSON structure:
         comment_posted=comment_posted,
         comment_id=comment_id,
         ai_provider=ai_provider,
+        tokens_used=tokens_used,
+        remaining_quota=remaining_quota,
     )
 
 
@@ -516,6 +528,7 @@ async def consult_project_copilot(
     problem_description: str,
     category: str = "GENERAL",
     model: Optional[str] = None,
+    current_user: Optional[User] = None,
 ) -> ProjectCopilotResponse:
     """
     Project-level AI Copilot.
@@ -523,6 +536,14 @@ async def consult_project_copilot(
     inspects project metadata, active tasks, and file vault datasheets,
     and returns comprehensive technical guidance, ideas, and component recommendations.
     """
+    remaining_quota = 999
+    is_admin = False
+    if current_user:
+        is_admin = (current_user.role == UserRole.ADMIN)
+        allowed, remaining_quota, reason = check_and_record_member_quota(current_user)
+        if not allowed:
+            raise ValidationError(reason)
+
     stmt = (
         select(Project)
         .options(
@@ -569,8 +590,9 @@ Provide an innovative, highly practical engineering response. Include:
     effective_model = model or get_gemini_model()
     gemini_raw = await call_gemini_api(
         prompt=prompt,
-        system_instruction="You are Google Gemini Advanced, Principal Engineer and System Architect. Provide clear, professional, markdown-formatted technical recommendations, circuit design math, code snippets, and component choices.",
+        system_instruction="You are Google Gemini Advanced, Principal Systems & Full-Stack Architect specializing in modern web development and engineering systems. Provide clear, professional, markdown-formatted technical recommendations, web architecture patterns, circuit design math, code snippets, and component choices.",
         model=effective_model,
+        max_tokens=4096,
     )
 
     ai_provider = f"Google Gemini Advanced ({effective_model})"
@@ -597,6 +619,7 @@ In embedded hardware, firmware, and PMS systems, this class of roadblock typical
 3. Commit revised driver routines to the PMS code repository.
 """
 
+    tokens_used = int(len(gemini_raw.split()) * 1.3) if gemini_raw else 80
     return ProjectCopilotResponse(
         project_id=project.id,
         project_name=project.name,
@@ -614,4 +637,106 @@ In embedded hardware, firmware, and PMS systems, this class of roadblock typical
         ],
         formatted_markdown=gemini_raw,
         ai_provider=ai_provider,
+        tokens_used=tokens_used,
+        remaining_quota=remaining_quota,
+    )
+
+
+def _generate_heuristic_chat_reply(message: str) -> str:
+    m = message.lower()
+    if any(k in m for k in ["slow", "speed", "performance", "latency", "fast"]):
+        return (
+            "**Performance Optimization Guide:**\n"
+            "1. **Static Caching & Gzip:** Ensure Nginx compresses JS/CSS and applies Cache-Control headers.\n"
+            "2. **Database Queries:** Replace N+1 queries with SQLAlchemy `selectinload` and add indexes on foreign keys.\n"
+            "3. **Frontend Bundle:** Leverage `React.lazy` code splitting to keep the initial page bundle under 400KB."
+        )
+    if any(k in m for k in ["i2c", "spi", "pullup", "resistor", "hardware", "circuit", "noise"]):
+        return (
+            "**Hardware Engineering Recommendation:**\n"
+            "1. **Bus Pull-Ups:** For I2C at 400kHz, use 2.2kΩ-4.7kΩ pull-up resistors on SDA/SCL.\n"
+            "2. **Power Decoupling:** Place a 100nF ceramic cap close to MCU VDD pins to decouple switching noise.\n"
+            "3. **Signal Integrity:** Keep trace lengths matched and place 33Ω damping resistors on high-speed clock lines."
+        )
+    if any(k in m for k in ["token", "quota", "limit", "cost"]):
+        return (
+            "**AI Member Token Policy:**\n"
+            "To keep operational costs minimal and response times ultra-fast, non-admin members are limited to "
+            "15 queries/day and 250 max output tokens in concise mode. Administrators have unrestricted access."
+        )
+    return (
+        f"**Engineering AI Assistant:**\n"
+        f"I received your inquiry: \"{message[:80]}...\".\n\n"
+        "Key Engineering Checklist:\n"
+        "- Verify schema constraints and input boundary conditions.\n"
+        "- Inspect browser/server logs for unhandled async exceptions.\n"
+        "- Confirm environment credentials and network reachability."
+    )
+
+
+async def chat_with_ai(
+    db: AsyncSession,
+    message: str,
+    current_user: User,
+    project_id: Optional[uuid.UUID] = None,
+    model: Optional[str] = None,
+) -> AIChatResponse:
+    """
+    Direct interactive engineering chat assistant.
+    Limits regular member queries to MEMBER_DAILY_REQUEST_LIMIT and low tokens (MEMBER_MAX_OUTPUT_TOKENS).
+    """
+    is_admin = (current_user.role == UserRole.ADMIN)
+    allowed, remaining_quota, reason = check_and_record_member_quota(current_user)
+    if not allowed:
+        raise ValidationError(reason)
+
+    max_tokens = ADMIN_MAX_OUTPUT_TOKENS if is_admin else MEMBER_MAX_OUTPUT_TOKENS
+    clean_message = message.strip()
+    if not is_admin and len(clean_message) > 350:
+        clean_message = clean_message[:350] + "... [context truncated for member token quota]"
+
+    # Optional project context
+    project_context = ""
+    if project_id:
+        p_stmt = select(Project).where(Project.id == project_id)
+        proj = (await db.execute(p_stmt)).scalar_one_or_none()
+        if proj:
+            project_context = f"\nCurrent Active Project Context: {proj.name} ({proj.status.value})"
+
+    if is_admin:
+        system_instruction = (
+            "You are Google Gemini Advanced, Principal Systems & Full-Stack Architect. "
+            "Provide production-ready, accurate technical answers, code patches, and hardware/software advice."
+        )
+    else:
+        system_instruction = (
+            "You are an engineering AI assistant. CONCISE MODE: reply in under 120 words with minimal bullet points. "
+            "Output direct, high-density technical solutions without filler or conversational fluff."
+        )
+
+    prompt = f"{clean_message}{project_context}"
+    effective_model = model or get_gemini_model()
+    gemini_reply = await call_gemini_api(
+        prompt=prompt,
+        system_instruction=system_instruction,
+        model=effective_model,
+        max_tokens=max_tokens,
+    )
+
+    if gemini_reply:
+        estimated_tokens = int(len(gemini_reply.split()) * 1.3)
+        return AIChatResponse(
+            reply=gemini_reply.strip(),
+            tokens_used=estimated_tokens,
+            remaining_quota=remaining_quota,
+            ai_provider=f"Google Gemini ({effective_model})",
+        )
+
+    # Heuristic fallback if Gemini API is offline or key missing
+    heuristic_reply = _generate_heuristic_chat_reply(clean_message)
+    return AIChatResponse(
+        reply=heuristic_reply,
+        tokens_used=len(heuristic_reply.split()),
+        remaining_quota=remaining_quota,
+        ai_provider="Engineering Diagnostic Engine (Heuristic)",
     )

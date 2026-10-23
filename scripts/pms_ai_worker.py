@@ -24,8 +24,8 @@ if hasattr(sys.stderr, 'reconfigure'):
 
 # Paths & Settings
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SSH_KEY = Path("d:/PMS/Subasri.pem")
-REMOTE_HOST = "ubuntu@16.16.124.247"
+SSH_KEY = Path("d:/PMS/gcp_pms_key")
+REMOTE_HOST = "gowthamthangaraj18@34.14.145.123"
 AI_USER_ID = "a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1"
 AI_USERNAME = "ai_engineer"
 
@@ -39,6 +39,8 @@ def run_cmd(cmd, cwd=None, check=False):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             shell=isinstance(cmd, str),
         )
         return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
@@ -64,6 +66,8 @@ def run_remote_sql(sql: str) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
         if proc.returncode != 0 or proc.stderr:

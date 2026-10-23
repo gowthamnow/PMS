@@ -22,6 +22,14 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { Logo } from '../ui/Logo';
 
+interface NavItem {
+  label: string;
+  icon: any;
+  href: string;
+  badge?: number;
+  badgeText?: string;
+}
+
 export interface SidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -39,7 +47,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
 
   const unreadCount = unreadData?.count || 0;
 
-  const mainNavItems = [
+  const mainNavItems: NavItem[] = [
     { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
     { label: 'Projects', icon: FolderOpen, href: '/projects' },
     { label: 'Tasks', icon: CheckSquare, href: '/tasks' },
@@ -47,7 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
       label: 'AI Copilot',
       icon: Sparkles,
       href: '/ai',
-      badgeText: 'AI',
+      badgeText: 'PRO',
     },
     { label: 'Messages', icon: MessageSquare, href: '/messages' },
     { label: 'Team', icon: Users, href: '/team' },
@@ -129,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
                   )}
                 />
                 {!isCollapsed && <span className="truncate flex-1">{item.label}</span>}
-                {'badgeText' in item && item.badgeText && !isCollapsed && (
+                {item.badgeText && !isCollapsed && (
                   <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white tracking-wider">
                     {item.badgeText}
                   </span>
