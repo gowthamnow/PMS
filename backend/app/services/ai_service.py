@@ -575,9 +575,11 @@ Please respond in this exact JSON structure:
 
     # Format resolutions and verifications in the voice of the Autonomous AI Engineer
     fix_applied_list = parsed_solution.get("fix_applied", parsed_solution.get("action_plan", []))
+    action_plan_list = fix_applied_list
     fix_applied_md = "\n".join([f"&bull; {step}" for step in fix_applied_list])
 
     verification_list = parsed_solution.get("verification_results", parsed_solution.get("testing_steps", []))
+    testing_steps_list = verification_list
     verification_md = "\n".join([f"&bull; {step}" for step in verification_list])
 
     formatted_markdown = f"""### 🤖 Gemini AI Engineer — Resolution Report
