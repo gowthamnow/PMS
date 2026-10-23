@@ -29,6 +29,8 @@ class TaskSolveResponse(BaseModel):
     comment_posted: bool = False
     comment_id: Optional[uuid.UUID] = None
     ai_provider: str = "Google Gemini"
+    tokens_used: Optional[int] = None
+    remaining_quota: Optional[int] = None
 
 
 class ProjectCopilotRequest(BaseModel):
@@ -48,6 +50,21 @@ class ProjectCopilotResponse(BaseModel):
     suggested_tasks: List[str]
     formatted_markdown: str
     ai_provider: str = "Google Gemini Advanced (gemini-1.5-pro)"
+    tokens_used: Optional[int] = None
+    remaining_quota: Optional[int] = None
+
+
+class AIChatRequest(BaseModel):
+    message: str
+    project_id: Optional[uuid.UUID] = None
+    model: Optional[str] = "gemini-1.5-pro"
+
+
+class AIChatResponse(BaseModel):
+    reply: str
+    tokens_used: int
+    remaining_quota: int
+    ai_provider: str
 
 
 class AIConfigResponse(BaseModel):
@@ -56,6 +73,10 @@ class AIConfigResponse(BaseModel):
     model: str
     available_models: List[str] = ["gemini-1.5-pro", "gemini-2.0-flash", "gemini-1.5-flash"]
     features: List[str]
+    member_daily_limit: int = 15
+    member_max_tokens: int = 250
+    user_remaining_quota: Optional[int] = None
+    is_admin: bool = False
 
 
 class AIConfigUpdateRequest(BaseModel):

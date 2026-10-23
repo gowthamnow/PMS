@@ -24,22 +24,9 @@ def send_email(
     along with CC recipients in `cc_emails`.
     Gracefully logs and continues if SMTP is not configured or fails.
     """
-    if not settings.SMTP_HOST:
-        logger.info(
-            "SMTP_HOST not configured. Email simulated -> TO: %s, CC: %s, SUBJECT: %s",
-            to_email,
-            cc_emails or [],
-            subject,
-        )
-        return False
-
     try:
         # Sanitize subject and email addresses against CRLF header injection
         safe_subject = re.sub(r"[\r\n]+", " ", subject).strip()
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = safe_subject
-        msg["From"] = f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>"
-
         if isinstance(to_email, str):
             to_list = [re.sub(r"[\r\n]+", "", e).strip() for e in to_email.split(",") if e.strip()]
         elif isinstance(to_email, (list, tuple)):
@@ -51,11 +38,24 @@ def send_email(
             logger.warning("send_email called without any valid recipients in to_email: %s", to_email)
             return False
 
-        # Prevent sending real emails during automated test runs or to dummy domains
+        # Prevent sending real emails during automated test runs
         import os
         if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING") == "true":
             logger.info("Test environment detected: Skipping SMTP dispatch -> TO: %s, SUBJECT: %s", to_list, safe_subject)
             return True
+
+        if not settings.SMTP_HOST:
+            logger.info(
+                "SMTP_HOST not configured. Email simulated -> TO: %s, CC: %s, SUBJECT: %s",
+                to_list,
+                cc_emails or [],
+                safe_subject,
+            )
+            return False
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = safe_subject
+        msg["From"] = f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>"
 
         # Filter out dummy/mock domains to prevent mail delivery subsystem bounces
         dummy_domains = ("@example.com", "@test.com", "@test.local", "@engineering.local")

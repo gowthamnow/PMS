@@ -86,7 +86,12 @@ async def init_db() -> None:
         # Initialize default vault folders for projects if needed
         proj_res = await conn.execute(text("SELECT id FROM projects;"))
         for (p_id,) in proj_res.fetchall():
-            cnt = (await conn.execute(text(f"SELECT COUNT(*) FROM project_folders WHERE project_id = '{p_id}';"))).scalar_one()
+            cnt = (
+                await conn.execute(
+                    text("SELECT COUNT(*) FROM project_folders WHERE project_id = :p_id;"),
+                    {"p_id": p_id},
+                )
+            ).scalar_one()
             if cnt == 0:
                 for f_name, f_col, f_ico, f_desc in [
                     ("Datasheets", "blue", "datasheet", "Component IC datasheets, pinout charts, and hardware reference manuals."),

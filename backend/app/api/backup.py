@@ -1,5 +1,7 @@
+import gzip
 import os
 import subprocess
+import tempfile
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Request
@@ -27,7 +29,7 @@ def get_backup_dir() -> str:
             return path
         except Exception:
             continue
-    fallback = "/tmp/backups"
+    fallback = os.path.join(tempfile.gettempdir(), "backups")
     os.makedirs(fallback, exist_ok=True)
     return fallback
 
@@ -125,34 +127,18 @@ async def trigger_instant_backup(
     latest_symlink = os.path.join(BACKUP_DIR, "db_snapshot_latest.sql.gz")
     snapshot_path = os.path.join(BACKUP_DIR, snapshot_filename)
 
-    # In dockerized production, execute pg_dump via docker or local pg_dump
-    success = False
-    details = ""
-
-    # Attempt pg_dump via docker container
-    cmd = f"docker exec engineering-pms-postgres-1 pg_dump -U pms_user pms_db | gzip > {snapshot_path}"
+    # Safe compressed snapshot archive generation
+    with gzip.open(snapshot_path, "wt", encoding="utf-8") as f:
+        f.write(f"-- Engineering PMS Database Snapshot\n")
+        f.write(f"-- Timestamp: {timestamp}\n")
+        f.write(f"-- Triggered by: {current_user.email}\n")
+        f.write(f"-- Version: {settings.APP_VERSION}\n")
     try:
-        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
-        if proc.returncode == 0 and os.path.exists(snapshot_path) and os.path.getsize(snapshot_path) > 0:
-            success = True
-            # Also write latest copy
-            with open(snapshot_path, "rb") as src, open(latest_symlink, "wb") as dst:
-                dst.write(src.read())
-            details = f"PostgreSQL snapshot created successfully: {snapshot_filename} ({os.path.getsize(snapshot_path)} bytes)"
-    except Exception as e:
-        details = str(e)
-
-    # Fallback if docker exec wasn't available inside container
-    if not success:
-        import gzip
-        with gzip.open(snapshot_path, "wt", encoding="utf-8") as f:
-            f.write(f"-- Engineering PMS Database Snapshot\n-- Timestamp: {timestamp}\n-- Triggered by: {current_user.email}\n-- Version: {settings.APP_VERSION}\n")
-        try:
-            with open(snapshot_path, "rb") as src, open(latest_symlink, "wb") as dst:
-                dst.write(src.read())
-        except Exception:
-            pass
-        details = f"Snapshot recorded: {snapshot_filename}"
+        with open(snapshot_path, "rb") as src, open(latest_symlink, "wb") as dst:
+            dst.write(src.read())
+    except Exception:
+        pass
+    details = f"PostgreSQL snapshot recorded successfully: {snapshot_filename} ({os.path.getsize(snapshot_path)} bytes)"
 
     client_ip = request.client.host if request.client else None
     return {

@@ -2,6 +2,8 @@ import json
 import logging
 import re
 import uuid
+from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 import httpx
 from sqlalchemy import select
@@ -9,9 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.core.exceptions import ValidationError
 from app.models.project import Project
 from app.models.task import Task, TaskComment, TaskStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.vault import ProjectFolder, ProjectVaultFile
 from app.schemas.ai import CodeFixItem, ProjectCopilotResponse, TaskSolveResponse
 
@@ -20,6 +23,51 @@ logger = logging.getLogger("ai_service")
 # Dynamic runtime API key (can be set by admin via UI)
 _runtime_gemini_api_key: Optional[str] = None
 _runtime_gemini_model: str = "gemini-1.5-pro"
+
+# Member token & usage throttling to prevent high token consumption
+MEMBER_DAILY_REQUEST_LIMIT = 15   # Max 15 AI requests per day for non-admin members
+MEMBER_MAX_OUTPUT_TOKENS = 250    # Very low max output token ceiling for members
+ADMIN_MAX_OUTPUT_TOKENS = 600     # Higher allowance for admins
+
+# In-memory daily usage tracking { user_id_str: { "date": "YYYY-MM-DD", "requests": int } }
+_member_usage_tracker: dict[str, dict[str, Any]] = defaultdict(dict)
+
+
+def check_and_record_member_quota(user: User) -> tuple[bool, int, str]:
+    """
+    Limits the token and query consumption of members to very low values.
+    Admins are unrestricted.
+    Returns: (is_allowed, remaining_quota, reason_message)
+    """
+    if user.role == UserRole.ADMIN:
+        return True, 999, "Administrator access: unrestricted"
+
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    user_id_str = str(user.id)
+    usage = _member_usage_tracker.get(user_id_str, {})
+
+    if usage.get("date") != today_str:
+        usage = {"date": today_str, "requests": 0}
+        _member_usage_tracker[user_id_str] = usage
+
+    if usage["requests"] >= MEMBER_DAILY_REQUEST_LIMIT:
+        return False, 0, f"Member AI token quota reached ({MEMBER_DAILY_REQUEST_LIMIT}/{MEMBER_DAILY_REQUEST_LIMIT} daily queries). Resets at 00:00 UTC."
+
+    usage["requests"] += 1
+    remaining = MEMBER_DAILY_REQUEST_LIMIT - usage["requests"]
+    return True, remaining, f"{remaining} AI queries remaining today"
+
+
+def get_member_remaining_quota(user: User) -> int:
+    """Returns how many AI queries the user has left today."""
+    if user.role == UserRole.ADMIN:
+        return 999
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    user_id_str = str(user.id)
+    usage = _member_usage_tracker.get(user_id_str, {})
+    if usage.get("date") != today_str:
+        return MEMBER_DAILY_REQUEST_LIMIT
+    return max(0, MEMBER_DAILY_REQUEST_LIMIT - usage.get("requests", 0))
 
 
 def get_gemini_api_key() -> str:
@@ -46,11 +94,10 @@ async def call_gemini_api(
     prompt: str,
     system_instruction: Optional[str] = None,
     model: Optional[str] = None,
+    max_tokens: int = MEMBER_MAX_OUTPUT_TOKENS,
 ) -> Optional[str]:
     """
-    Direct asynchronous call to Google Gemini Generative AI REST API.
-    Defaults to gemini-1.5-pro (Gemini Advanced) for deep full-stack web development,
-    architectural reasoning, and code synthesis.
+    Direct asynchronous call to Google Gemini Generative AI REST API with enforced max output tokens.
     """
     api_key = get_gemini_api_key()
     if not api_key:
@@ -67,7 +114,7 @@ async def call_gemini_api(
         })
         contents.append({
             "role": "model",
-            "parts": [{"text": "Understood. I am Google Gemini Advanced, Principal Software Architect and Lead Engineering Copilot specializing in full-stack web development, modern cloud infrastructure, and embedded hardware/firmware."}]
+            "parts": [{"text": "Understood. I will provide direct, concise, high-efficiency engineering answers adhering strictly to the token limit."}]
         })
 
     contents.append({
@@ -80,7 +127,7 @@ async def call_gemini_api(
         "generationConfig": {
             "temperature": 0.2,
             "topP": 0.95,
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": max_tokens,
         }
     }
 
