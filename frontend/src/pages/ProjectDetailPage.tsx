@@ -20,6 +20,7 @@ import { TaskRow } from '../components/tasks/TaskRow';
 import { TaskFilters, TaskFilterValues } from '../components/tasks/TaskFilters';
 import { TaskModal, TaskFormData } from '../components/tasks/TaskModal';
 import { formatDate, formatFileSize, isOverdue } from '../lib/utils';
+import { ProjectVaultExplorer } from '../components/vault/ProjectVaultExplorer';
 import {
   FolderOpen,
   Kanban,
@@ -682,148 +683,10 @@ export const ProjectDetailPage: React.FC = () => {
 
       {/* Tab 4: Files / Vault Storage */}
       {activeTab === 'files' && (
-        <div className="bg-white p-5 rounded-lg border border-border shadow-subtle flex flex-col gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
-            <div>
-              <h3 className="text-sm font-bold text-text-primary">
-                Project File Storage &amp; Schematics Vault
-              </h3>
-              <p className="text-xs text-text-muted mt-0.5">
-                Centralized file storage for PCB layout files, Gerber zips, hex/bin files, datasheets, and BOMs (up to 25MB each).
-              </p>
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<Upload className="w-3.5 h-3.5" />}
-              onClick={() => setIsUploadModalOpen(true)}
-            >
-              Upload Project File
-            </Button>
-          </div>
-
-          {/* Search & Category Filter */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {[
-                { id: 'ALL', label: 'All Files' },
-                { id: 'SCHEMATICS', label: 'Schematics (.sch/.kicad)' },
-                { id: 'GERBER', label: 'PCB & Gerbers (.zip)' },
-                { id: 'FIRMWARE', label: 'Firmware (.bin/.hex)' },
-                { id: 'BOM', label: 'BOM & Parts (.csv/.xlsx)' },
-                { id: 'DOCS', label: 'Datasheets & Docs (.pdf)' },
-              ].map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setFileFilterCategory(cat.id)}
-                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                    fileFilterCategory === cat.id
-                      ? 'bg-copper-100 text-copper-800 border-copper-300 font-semibold'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="w-48">
-              <Input
-                placeholder="Search filenames..."
-                value={fileSearch}
-                onChange={(e) => setFileSearch(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {isLoadingAttachments ? (
-            <div className="py-12 text-center">
-              <Spinner size="md" />
-            </div>
-          ) : (() => {
-            const filtered = attachments.filter((att) => {
-              if (fileSearch && !att.filename.toLowerCase().includes(fileSearch.toLowerCase())) {
-                return false;
-              }
-              const ext = att.filename.split('.').pop()?.toLowerCase() || '';
-              if (fileFilterCategory === 'SCHEMATICS') {
-                return ['sch', 'kicad_sch', 'brd', 'kicad_pcb'].includes(ext);
-              }
-              if (fileFilterCategory === 'GERBER') {
-                return ['zip', 'tar', 'gz', 'gbr', 'gerber'].includes(ext);
-              }
-              if (fileFilterCategory === 'FIRMWARE') {
-                return ['bin', 'hex', 'elf', 'c', 'h', 'cpp', 'ino'].includes(ext);
-              }
-              if (fileFilterCategory === 'BOM') {
-                return ['csv', 'xlsx', 'xls', 'tsv'].includes(ext);
-              }
-              if (fileFilterCategory === 'DOCS') {
-                return ['pdf', 'doc', 'docx', 'md', 'txt'].includes(ext);
-              }
-              return true;
-            });
-
-            if (filtered.length === 0) {
-              return (
-                <EmptyState
-                  heading="No Files Found"
-                  description={
-                    fileSearch || fileFilterCategory !== 'ALL'
-                      ? 'No files match your current category filter or search term.'
-                      : 'Click "Upload Project File" above to add hardware schematics, PCB Gerbers, firmware, or datasheets.'
-                  }
-                />
-              );
-            }
-
-            return (
-              <div className="divide-y divide-border border border-border rounded overflow-hidden text-xs">
-                {filtered.map((att) => (
-                  <div key={att.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded bg-copper-50 text-copper-700 flex items-center justify-center shrink-0">
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-text-primary">{att.filename}</p>
-                        <p className="text-[10px] text-text-muted">
-                          {formatFileSize(att.file_size)} &bull; Uploaded {formatDate(att.created_at)}
-                          {att.user && ` by ${att.user.full_name || att.user.username}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        leftIcon={<Download className="w-3.5 h-3.5" />}
-                        onClick={() => api.attachments.downloadAttachment(att.id, att.filename)}
-                      >
-                        Download
-                      </Button>
-                      {isManagerOrAdmin && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            if (window.confirm(`Delete ${att.filename}?`)) {
-                              deleteFileMutation.mutate(att.id);
-                            }
-                          }}
-                          className="text-text-muted hover:text-red-600"
-                          title="Delete file"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
+        <ProjectVaultExplorer
+          projectId={project.id}
+          projectName={project.name}
+        />
       )}
 
       {/* Task Creation Modal */}

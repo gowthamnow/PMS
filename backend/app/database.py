@@ -78,3 +78,23 @@ async def init_db() -> None:
                 text("UPDATE projects SET workspace_id = :ws_id WHERE workspace_id IS NULL;"),
                 {"ws_id": default_id},
             )
+
+        # Initialize default vault folders for projects if needed
+        proj_res = await conn.execute(text("SELECT id FROM projects;"))
+        for (p_id,) in proj_res.fetchall():
+            cnt = (await conn.execute(text(f"SELECT COUNT(*) FROM project_folders WHERE project_id = '{p_id}';"))).scalar_one()
+            if cnt == 0:
+                for f_name, f_col, f_ico, f_desc in [
+                    ("Datasheets", "blue", "datasheet", "Component IC datasheets, pinout charts, and hardware reference manuals."),
+                    ("Design Files", "purple", "design", "PCB schematics, Altium/KiCad layouts, Gerber archives, CAD, and 3D STEP models."),
+                    ("Code & Firmware", "emerald", "code", "Firmware HEX/BIN builds, driver sources, embedded C/C++ archives, and test scripts."),
+                    ("Extra & Documents", "amber", "extra", "Lab test waveforms, oscillograms, QA checklists, photos, and general documentation."),
+                ]:
+                    fid = uuid.uuid4()
+                    await conn.execute(
+                        text(
+                            "INSERT INTO project_folders (id, project_id, name, color, icon, description, created_at, updated_at) "
+                            "VALUES (:id, :pid, :name, :color, :icon, :desc, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);"
+                        ),
+                        {"id": fid, "pid": p_id, "name": f_name, "color": f_col, "icon": f_ico, "desc": f_desc},
+                    )

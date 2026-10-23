@@ -37,12 +37,20 @@ async def get_dashboard_stats(
     proj_query = select(Project.id)
     if not is_admin:
         proj_query = proj_query.join(Project.members).where(ProjectMember.user_id == current_user.id)
+    elif current_user.workspace_id:
+        proj_query = proj_query.where(Project.workspace_id == current_user.workspace_id)
     user_project_ids = (await db.execute(proj_query)).scalars().all()
 
     # Total projects & active projects
     if is_admin:
-        total_p_stmt = select(func.count(Project.id))
-        active_p_stmt = select(func.count(Project.id)).where(Project.status == ProjectStatus.ACTIVE)
+        if current_user.workspace_id:
+            total_p_stmt = select(func.count(Project.id)).where(Project.workspace_id == current_user.workspace_id)
+            active_p_stmt = select(func.count(Project.id)).where(
+                Project.workspace_id == current_user.workspace_id, Project.status == ProjectStatus.ACTIVE
+            )
+        else:
+            total_p_stmt = select(func.count(Project.id))
+            active_p_stmt = select(func.count(Project.id)).where(Project.status == ProjectStatus.ACTIVE)
     else:
         total_p_stmt = select(func.count(Project.id)).where(Project.id.in_(user_project_ids))
         active_p_stmt = select(func.count(Project.id)).where(
@@ -56,6 +64,10 @@ async def get_dashboard_stats(
     task_status_stmt = select(Task.status, func.count(Task.id)).where(Task.is_deleted == False)
     if not is_admin:
         task_status_stmt = task_status_stmt.where(Task.project_id.in_(user_project_ids))
+    elif current_user.workspace_id:
+        task_status_stmt = task_status_stmt.join(Project, Project.id == Task.project_id).where(
+            Project.workspace_id == current_user.workspace_id
+        )
     task_status_stmt = task_status_stmt.group_by(Task.status)
     task_status_res = await db.execute(task_status_stmt)
 
@@ -71,6 +83,10 @@ async def get_dashboard_stats(
     )
     if not is_admin:
         overdue_stmt = overdue_stmt.where(Task.project_id.in_(user_project_ids))
+    elif current_user.workspace_id:
+        overdue_stmt = overdue_stmt.join(Project, Project.id == Task.project_id).where(
+            Project.workspace_id == current_user.workspace_id
+        )
     overdue_tasks = (await db.execute(overdue_stmt)).scalar_one()
 
     # Upcoming deadlines (due in next 7 days)
@@ -92,6 +108,10 @@ async def get_dashboard_stats(
     )
     if not is_admin:
         upcoming_stmt = upcoming_stmt.where(Task.project_id.in_(user_project_ids))
+    elif current_user.workspace_id:
+        upcoming_stmt = upcoming_stmt.join(Project, Project.id == Task.project_id).where(
+            Project.workspace_id == current_user.workspace_id
+        )
     upcoming_stmt = upcoming_stmt.order_by(Task.due_date.asc()).limit(10)
     upcoming_res = await db.execute(upcoming_stmt)
     upcoming_deadlines = [TaskResponse.model_validate(t) for t in upcoming_res.scalars().all()]
@@ -108,6 +128,8 @@ async def get_dashboard_stats(
             audit_stmt = audit_stmt.join(AuditLog.user).where(User.workspace_id == current_user.workspace_id)
         else:
             audit_stmt = audit_stmt.where(AuditLog.id == None)
+    elif current_user.workspace_id:
+        audit_stmt = audit_stmt.join(AuditLog.user).where(User.workspace_id == current_user.workspace_id)
     audit_res = await db.execute(audit_stmt)
     recent_activity = [AuditLogResponse.model_validate(a) for a in audit_res.scalars().all()]
 

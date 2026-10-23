@@ -273,3 +273,94 @@ export interface Conversation {
   last_message_at?: string;
   unread_count: number;
 }
+
+// ==========================================
+// File Management Vault & Folders
+// ==========================================
+export interface ProjectFolder {
+  id: string;
+  project_id: string;
+  name: string;
+  description?: string;
+  color: string;
+  icon: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  file_count?: number;
+  total_bytes?: number;
+}
+
+export interface ProjectVaultFile {
+  id: string;
+  project_id: string;
+  folder_id?: string;
+  filename: string;
+  stored_filename: string;
+  file_size: number;
+  content_type: string;
+  category: string;
+  description?: string;
+  uploaded_by?: string;
+  uploader?: User;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectVaultStats {
+  total_files: number;
+  total_bytes: number;
+  folders_count: number;
+  categories: Record<string, number>;
+}
+
+// ==========================================
+// AI & Task Solver Types
+// ==========================================
+export interface CodeFixItem {
+  file_path?: string;
+  description: string;
+  code_snippet: string;
+  language?: string;
+}
+
+export interface TaskSolveResponse {
+  task_id: string;
+  task_title: string;
+  issue_type: string;
+  root_cause: string;
+  solution_summary: string;
+  action_plan: string[];
+  code_fixes: CodeFixItem[];
+  testing_steps: string[];
+  formatted_markdown: string;
+  comment_posted: boolean;
+  comment_id?: string;
+  ai_provider: string;
+}
+
+export interface ProjectCopilotResponse {
+  project_id: string;
+  project_name: string;
+  query: string;
+  analysis: string;
+  recommended_solutions: string[];
+  circuit_or_code_advice?: string;
+  suggested_tasks: string[];
+  formatted_markdown: string;
+  ai_provider: string;
+}
+
+export interface BackupStatus {
+  git_branch: string;
+  git_commit: string;
+  git_commit_date: string;
+  git_clean: boolean;
+  latest_db_snapshot?: string;
+  latest_db_snapshot_size?: string;
+  latest_db_snapshot_time?: string;
+  backup_directory: string;
+  total_snapshots: number;
+  restore_command: string;
+}
+

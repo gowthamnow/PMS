@@ -23,8 +23,10 @@ class Settings(BaseSettings):
     GITEA_BASE_URL: str = "http://localhost:3001"
     GITEA_ADMIN_TOKEN: str = ""
 
-    # Google OAuth
+    # Google OAuth & Cloud Generative AI
     GOOGLE_CLIENT_ID: str = "787577822859-ghj33lfvj6rlj0s151qd3kus7bc49kbr.apps.googleusercontent.com"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
 
     # Bootstrap Initial Admin
     FIRST_ADMIN_EMAIL: str = "admin@example.com"

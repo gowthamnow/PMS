@@ -2,7 +2,7 @@ import math
 import uuid
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,6 +10,12 @@ from app.api.deps import get_current_active_user, get_db, require_admin
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
 from app.core.security import get_password_hash
 from app.models.user import User, UserRole
+from app.models.project import Project, ProjectMember
+from app.models.task import Task, TaskAttachment, TaskComment
+from app.models.time_entry import TimeEntry
+from app.models.message import Message
+from app.models.notification import Notification
+from app.models.audit import AuditLog
 from app.schemas.user import (
     UserCreate,
     UserResetPassword,
@@ -40,9 +46,6 @@ async def list_users(
         if current_user.workspace_id:
             query = query.where(User.workspace_id == current_user.workspace_id)
             count_query = count_query.where(User.workspace_id == current_user.workspace_id)
-        else:
-            query = query.where(User.id == None)
-            count_query = count_query.where(User.id == None)
     elif workspace_id:
         query = query.where(User.workspace_id == workspace_id)
         count_query = count_query.where(User.workspace_id == workspace_id)
@@ -212,6 +215,117 @@ async def update_user(
 
 
 @router.delete("/{user_id}")
+async def delete_user(
+    user_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Permanently deletes a user account.
+    - Prevents deleting own account or the master administrator account.
+    - Prevents deleting the last remaining administrator.
+    - Reassigns projects, tasks, comments, and attachments to the deleting admin to avoid cascade data loss.
+    - Safely removes memberships, notifications, and user references.
+    """
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise NotFoundError("User not found")
+
+    if user.id == current_user.id:
+        raise ValidationError("Cannot delete your own account")
+
+    if user.email.lower() == "gowthamthangaraj18@gmail.com":
+        raise ForbiddenError("Master Administrator account cannot be deleted")
+
+    if user.role == UserRole.ADMIN:
+        admin_count_res = await db.execute(
+            select(func.count(User.id)).where(User.role == UserRole.ADMIN, User.id != user.id)
+        )
+        remaining_admins = admin_count_res.scalar_one()
+        if remaining_admins == 0:
+            raise ValidationError("Cannot delete the only remaining administrator account")
+
+    # 1. Reassign projects created by this user to current_user
+    await db.execute(
+        update(Project).where(Project.created_by == user.id).values(created_by=current_user.id)
+    )
+
+    # 2. Reassign tasks created by this user to current_user
+    await db.execute(
+        update(Task).where(Task.creator_id == user.id).values(creator_id=current_user.id)
+    )
+
+    # 3. Reassign task attachments uploaded by this user to current_user
+    await db.execute(
+        update(TaskAttachment).where(TaskAttachment.user_id == user.id).values(user_id=current_user.id)
+    )
+
+    # 4. Reassign task comments to current_user
+    await db.execute(
+        update(TaskComment).where(TaskComment.user_id == user.id).values(user_id=current_user.id)
+    )
+
+    # 5. Unassign tasks where user is assignee or reviewer
+    await db.execute(
+        update(Task).where(Task.assignee_id == user.id).values(assignee_id=None)
+    )
+    await db.execute(
+        update(Task).where(Task.reviewer_id == user.id).values(reviewer_id=None)
+    )
+
+    # 6. Delete project memberships
+    await db.execute(
+        delete(ProjectMember).where(ProjectMember.user_id == user.id)
+    )
+
+    # 7. Delete notifications
+    await db.execute(
+        delete(Notification).where(Notification.user_id == user.id)
+    )
+
+    # 8. Delete time entries
+    await db.execute(
+        delete(TimeEntry).where(TimeEntry.user_id == user.id)
+    )
+
+    # 9. Delete messages
+    await db.execute(
+        delete(Message).where(or_(Message.sender_id == user.id, Message.recipient_id == user.id))
+    )
+
+    # 10. Clear user_id in audit logs
+    await db.execute(
+        update(AuditLog).where(AuditLog.user_id == user.id).values(user_id=None)
+    )
+
+    user_info = {
+        "username": user.username,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+    }
+
+    # 11. Delete the user
+    await db.delete(user)
+    await db.commit()
+
+    client_ip = request.client.host if request.client else None
+    await log_audit(
+        db=db,
+        user_id=current_user.id,
+        action="DELETE_USER",
+        resource_type="USER",
+        resource_id=str(user_id),
+        changes=user_info,
+        ip_address=client_ip,
+    )
+
+    return {"message": f"User '{user_info['full_name'] or user_info['username']}' permanently deleted successfully"}
+
+
+@router.post("/{user_id}/deactivate")
 async def deactivate_user(
     user_id: uuid.UUID,
     request: Request,

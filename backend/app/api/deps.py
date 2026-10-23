@@ -76,9 +76,7 @@ async def get_project_member(
 
     # If non-admin user, check if project belongs to their workspace
     if current_user.role != UserRole.ADMIN:
-        if not current_user.workspace_id:
-            raise ForbiddenError("Access denied: You are not assigned to any workspace")
-        if project.workspace_id and project.workspace_id != current_user.workspace_id:
+        if project.workspace_id and current_user.workspace_id and project.workspace_id != current_user.workspace_id:
             raise ForbiddenError("Access denied: Project does not belong to your assigned workspace")
 
     if current_user.role == UserRole.ADMIN:

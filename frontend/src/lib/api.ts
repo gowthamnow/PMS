@@ -16,6 +16,12 @@ import {
   Message,
   Conversation,
   WorkloadItem,
+  ProjectFolder,
+  ProjectVaultFile,
+  ProjectVaultStats,
+  TaskSolveResponse,
+  ProjectCopilotResponse,
+  BackupStatus,
 } from '../types';
 
 export const apiClient: AxiosInstance = axios.create({
@@ -108,7 +114,7 @@ export const api = {
     createUser: (data: any): Promise<User> => apiClient.post('/users', data),
     updateUser: (id: string, data: any): Promise<User> => apiClient.put(`/users/${id}`, data),
     deleteUser: (id: string): Promise<any> => apiClient.delete(`/users/${id}`),
-    deactivateUser: (id: string): Promise<any> => apiClient.delete(`/users/${id}`),
+    deactivateUser: (id: string): Promise<any> => apiClient.post(`/users/${id}/deactivate`),
     activateUser: (id: string): Promise<User> => apiClient.put(`/users/${id}`, { is_active: true }),
     approveUser: (id: string): Promise<any> => apiClient.post(`/users/${id}/approve`),
     uploadAvatar: (file: File): Promise<{ avatar_url: string; message: string }> => {
@@ -137,6 +143,8 @@ export const api = {
       apiClient.post(`/workspaces/${workspaceId}/assign-member`, { user_id: userId }),
     removeMember: (workspaceId: string, userId: string): Promise<any> =>
       apiClient.post(`/workspaces/${workspaceId}/remove-member`, { user_id: userId }),
+    switchWorkspace: (workspaceId: string | null): Promise<User> =>
+      apiClient.post('/workspaces/switch', { workspace_id: workspaceId }),
   },
 
   projects: {
@@ -340,6 +348,78 @@ export const api = {
       pageSize: number = 20
     ): Promise<PaginatedResponse<AuditLogEntry>> =>
       apiClient.get('/admin/audit-log', { params: { page, page_size: pageSize } }),
+  },
+
+  ai: {
+    solveTask: (taskId: string, autoPostComment?: boolean, customInstruction?: string): Promise<TaskSolveResponse> => {
+      const q = new URLSearchParams();
+      if (autoPostComment) q.append('auto_post_comment', 'true');
+      if (customInstruction) q.append('custom_instruction', customInstruction);
+      return apiClient.post(`/ai/solve-task/${taskId}?${q.toString()}`);
+    },
+    consultProjectCopilot: (projectId: string, problemDescription: string, category?: string): Promise<ProjectCopilotResponse> =>
+      apiClient.post(`/ai/project-copilot/${projectId}`, {
+        project_id: projectId,
+        problem_description: problemDescription,
+        category: category || 'GENERAL',
+      }),
+    getConfig: (): Promise<{ has_api_key: boolean; provider: string; model: string; features: string[] }> =>
+      apiClient.get('/ai/config'),
+    updateConfig: (apiKey: string, model?: string): Promise<any> =>
+      apiClient.post('/ai/config', { api_key: apiKey, model: model || 'gemini-1.5-flash' }),
+  },
+
+  vault: {
+    getFolders: (projectId: string): Promise<ProjectFolder[]> =>
+      apiClient.get(`/projects/${projectId}/folders`),
+    createFolder: (projectId: string, data: { name: string; description?: string; color?: string; icon?: string }): Promise<ProjectFolder> =>
+      apiClient.post(`/projects/${projectId}/folders`, data),
+    deleteFolder: (projectId: string, folderId: string): Promise<any> =>
+      apiClient.delete(`/projects/${projectId}/folders/${folderId}`),
+    getFiles: (projectId: string, params?: { folder_id?: string; category?: string; search?: string }): Promise<ProjectVaultFile[]> =>
+      apiClient.get(`/projects/${projectId}/vault-files`, { params }),
+    uploadFile: (projectId: string, file: File, folderId?: string, category?: string, description?: string): Promise<ProjectVaultFile> => {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (folderId) formData.append('folder_id', folderId);
+      if (category) formData.append('category', category);
+      if (description) formData.append('description', description);
+      return apiClient.post(`/projects/${projectId}/vault-files`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
+    downloadFile: async (fileId: string, filename: string): Promise<void> => {
+      const res = await apiClient.get(`/vault/files/${fileId}/download`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    },
+    deleteFile: (fileId: string): Promise<any> =>
+      apiClient.delete(`/vault/files/${fileId}`),
+    getStats: (projectId: string): Promise<ProjectVaultStats> =>
+      apiClient.get(`/projects/${projectId}/vault-stats`),
+  },
+
+  backup: {
+    getStatus: (): Promise<BackupStatus> => apiClient.get('/backup/status'),
+    createBackup: (): Promise<{ message: string; snapshot_filename: string; details: string; restore_command: string }> =>
+      apiClient.post('/backup/create'),
+    downloadSnapshot: async (): Promise<void> => {
+      const res = await apiClient.get('/backup/download-snapshot', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `db_snapshot_latest_${new Date().toISOString().slice(0, 10)}.sql.gz`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    },
   },
 };
 

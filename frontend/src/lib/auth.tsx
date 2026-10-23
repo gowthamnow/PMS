@@ -11,6 +11,7 @@ export interface AuthContextType {
   loginWithGoogle: (data: { credential?: string; email?: string; full_name?: string; avatar_url?: string }) => Promise<any>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  switchWorkspace: (workspaceId: string | null) => Promise<User>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -110,6 +111,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const switchWorkspace = async (workspaceId: string | null): Promise<User> => {
+    const updatedUser = await api.workspaces.switchWorkspace(workspaceId);
+    setUser(updatedUser);
+    return updatedUser;
+  };
+
   const value: AuthContextType = {
     user,
     token,
@@ -119,6 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loginWithGoogle,
     logout,
     refreshUser,
+    switchWorkspace,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

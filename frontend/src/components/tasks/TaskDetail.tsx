@@ -33,8 +33,10 @@ import {
   Upload,
   AlertTriangle,
   Mail,
+  Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { AIAutoSolveModal } from '../ai/AIAutoSolveModal';
 
 export interface TaskDetailProps {
   taskId: string;
@@ -53,6 +55,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
   const [isUploading, setIsUploading] = useState(false);
   const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
   const [delayMessage, setDelayMessage] = useState('');
+  const [isAISolveModalOpen, setIsAISolveModalOpen] = useState(false);
 
   const isAdminOrManager = currentUser?.role === 'ADMIN' || currentUser?.role === 'PROJECT_MANAGER';
 
@@ -219,6 +222,17 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-xs border-amber-600"
+            leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+            onClick={() => setIsAISolveModalOpen(true)}
+            title="Auto-solve this bug or task with Google Gemini AI"
+          >
+            AI Auto-Solve Bug
+          </Button>
+
           {isAdminOrManager && task.assignee && (
             <Button
               variant="secondary"
@@ -591,6 +605,17 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
           </div>
         </Modal>
       )}
+
+      {/* AI Auto-Solve Bug Modal */}
+      <AIAutoSolveModal
+        isOpen={isAISolveModalOpen}
+        onClose={() => setIsAISolveModalOpen(false)}
+        taskId={task.id}
+        taskTitle={task.title}
+        onCommentPosted={() => {
+          queryClient.invalidateQueries({ queryKey: ['task-comments', task.id] });
+        }}
+      />
     </div>
   );
 };

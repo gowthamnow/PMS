@@ -5,7 +5,7 @@ import logging
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from app.config import settings
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -53,7 +53,8 @@ async def list_projects(
     page_size: int = Query(20, ge=1, le=100),
     status: Optional[ProjectStatus] = None,
     priority: Optional[ProjectPriority] = None,
-    workspace_id: Optional[uuid.UUID] = Query(None),
+    search: Optional[str] = None,
+    workspace_id: Optional[uuid.UUID] = None,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -63,28 +64,34 @@ async def list_projects(
     )
     count_query = select(func.count(func.distinct(Project.id)))
 
-    # If not admin, only show projects where current_user is a member and belongs to their workspace
+    # If not admin, show all projects where current_user is an assigned member
     if current_user.role != UserRole.ADMIN:
-        if current_user.workspace_id:
-            query = query.where(Project.workspace_id == current_user.workspace_id)
-            count_query = count_query.where(Project.workspace_id == current_user.workspace_id)
-        else:
-            query = query.where(Project.id == None)
-            count_query = count_query.where(Project.id == None)
         query = query.join(Project.members).where(ProjectMember.user_id == current_user.id)
         count_query = count_query.join(Project.members).where(ProjectMember.user_id == current_user.id)
-    else:
-        if workspace_id:
+        if workspace_id and not hasattr(workspace_id, "default"):
             query = query.where(Project.workspace_id == workspace_id)
             count_query = count_query.where(Project.workspace_id == workspace_id)
+    else:
+        if workspace_id and not hasattr(workspace_id, "default"):
+            query = query.where(Project.workspace_id == workspace_id)
+            count_query = count_query.where(Project.workspace_id == workspace_id)
+        elif current_user.workspace_id:
+            query = query.where(Project.workspace_id == current_user.workspace_id)
+            count_query = count_query.where(Project.workspace_id == current_user.workspace_id)
 
-    if status:
+    if status and not hasattr(status, "default"):
         query = query.where(Project.status == status)
         count_query = count_query.where(Project.status == status)
 
-    if priority:
+    if priority and not hasattr(priority, "default"):
         query = query.where(Project.priority == priority)
         count_query = count_query.where(Project.priority == priority)
+
+    if search and not hasattr(search, "default"):
+        s_term = f"%{search}%"
+        search_cond = Project.name.ilike(s_term) | Project.description.ilike(s_term)
+        query = query.where(search_cond)
+        count_query = count_query.where(search_cond)
 
     total_res = await db.execute(count_query)
     total = total_res.scalar_one()
@@ -308,6 +315,22 @@ async def add_project_member(
     if not target_user:
         raise NotFoundError("Target user not found")
 
+    # Fetch project details
+    proj_stmt = (
+        select(Project)
+        .options(selectinload(Project.workspace))
+        .where(Project.id == project_id)
+    )
+    proj_res = await db.execute(proj_stmt)
+    project = proj_res.scalar_one_or_none()
+    if not project:
+        raise NotFoundError("Project not found")
+
+    # If target user does not have an assigned workspace, link them to the project's workspace
+    if not target_user.workspace_id and project.workspace_id:
+        target_user.workspace_id = project.workspace_id
+        db.add(target_user)
+
     # Check already member
     existing_res = await db.execute(
         select(ProjectMember).where(
@@ -334,15 +357,6 @@ async def add_project_member(
     )
     res = await db.execute(stmt)
     full_member = res.scalar_one()
-
-    # Fetch project details for startup notification and email
-    proj_stmt = (
-        select(Project)
-        .options(selectinload(Project.workspace))
-        .where(Project.id == project_id)
-    )
-    proj_res = await db.execute(proj_stmt)
-    project = proj_res.scalar_one_or_none()
 
     if project:
         # Create in-app notification

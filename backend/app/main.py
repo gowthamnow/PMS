@@ -11,8 +11,10 @@ from sqlalchemy import select
 
 from app.api import (
     admin,
+    ai,
     attachments,
     auth,
+    backup,
     dashboard,
     messages,
     milestones,
@@ -22,6 +24,7 @@ from app.api import (
     tasks,
     time_entries,
     users,
+    vault,
     workspaces,
 )
 from app.config import settings
@@ -254,6 +257,9 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(messages.router, prefix="/api")
 app.include_router(workspaces.router, prefix="/api")
+app.include_router(ai.router, prefix="/api")
+app.include_router(vault.router, prefix="/api")
+app.include_router(backup.router, prefix="/api")
 app.include_router(admin.router)
 
 

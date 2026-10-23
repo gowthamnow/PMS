@@ -32,3 +32,7 @@ class WorkspaceResponse(WorkspaceBase):
 
 class WorkspaceMemberAssign(BaseModel):
     user_id: uuid.UUID
+
+
+class WorkspaceSwitchRequest(BaseModel):
+    workspace_id: Optional[uuid.UUID] = None

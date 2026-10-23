@@ -38,7 +38,10 @@ class User(Base):
 
     @property
     def workspace_name(self):
-        if "workspace" in self.__dict__:
-            ws = self.__dict__["workspace"]
+        try:
+            if "workspace" in self.__dict__ and self.__dict__["workspace"] is not None:
+                return self.__dict__["workspace"].name
+            ws = getattr(self, "workspace", None)
             return ws.name if ws else None
-        return None
+        except Exception:
+            return None

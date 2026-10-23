@@ -62,7 +62,9 @@ const ACCENT_COLORS = [
 export const SettingsPage: React.FC = () => {
   const { user, refreshUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'appearance';
+  const rawTab = searchParams.get('tab') || 'appearance';
+  const isAdmin = user?.role === 'ADMIN';
+  const activeTab = !isAdmin && rawTab === 'automation' ? 'appearance' : rawTab;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -207,7 +209,9 @@ export const SettingsPage: React.FC = () => {
     { id: 'appearance', label: 'Appearance & Themes', icon: <Palette className="w-4 h-4" /> },
     { id: 'profile', label: 'Profile Picture & Details', icon: <User className="w-4 h-4" /> },
     { id: 'password', label: 'Security & Password', icon: <Key className="w-4 h-4" /> },
-    { id: 'automation', label: 'Email Automation & Cadence', icon: <Bell className="w-4 h-4" /> },
+    ...(isAdmin
+      ? [{ id: 'automation', label: 'Email Automation & Cadence', icon: <Bell className="w-4 h-4" /> }]
+      : []),
   ];
 
   return (
@@ -216,7 +220,9 @@ export const SettingsPage: React.FC = () => {
       <div className="pb-2 border-b border-border">
         <h1 className="text-xl font-bold text-text-primary tracking-tight">System &amp; Workspace Settings</h1>
         <p className="text-xs text-text-secondary mt-0.5">
-          Customize themes, profile photos, passwords, email automation schedules, and delay notifications.
+          {isAdmin
+            ? 'Customize themes, profile photos, passwords, email automation schedules, and delay notifications.'
+            : 'Customize themes, profile photos, and account security passwords.'}
         </p>
       </div>
 
@@ -488,9 +494,9 @@ export const SettingsPage: React.FC = () => {
       )}
 
       {/* ======================================================== */}
-      {/* 4. EMAIL AUTOMATION & CADENCE SCHEDULE TAB               */}
+      {/* 4. EMAIL AUTOMATION & CADENCE SCHEDULE TAB (ADMIN ONLY)   */}
       {/* ======================================================== */}
-      {activeTab === 'automation' && (
+      {isAdmin && activeTab === 'automation' && (
         <div className="flex flex-col gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
           <div>
             <h3 className="font-bold text-sm text-text-primary mb-1">Automated Engineering Email Cadence</h3>

@@ -15,6 +15,7 @@ from app.schemas.workspace import (
     WorkspaceCreate,
     WorkspaceMemberAssign,
     WorkspaceResponse,
+    WorkspaceSwitchRequest,
     WorkspaceUpdate,
 )
 from app.services.audit_service import log_audit
@@ -340,3 +341,71 @@ async def remove_member(
         )
 
     return {"message": "Member removed from workspace successfully"}
+
+
+@router.post("/switch", response_model=UserResponse)
+async def switch_workspace(
+    request: Request,
+    switch_in: WorkspaceSwitchRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target_ws_id = switch_in.workspace_id
+    ws = None
+    if target_ws_id is not None:
+        ws_res = await db.execute(select(Workspace).where(Workspace.id == target_ws_id))
+        ws = ws_res.scalar_one_or_none()
+        if not ws:
+            raise NotFoundError("Workspace not found")
+
+        # Non-admins can only switch to their assigned workspace
+        if current_user.role != UserRole.ADMIN:
+            if current_user.workspace_id != target_ws_id:
+                raise ForbiddenError("Access denied: You are not assigned to this workspace")
+
+        current_user.workspace_id = target_ws_id
+        ws_name = ws.name
+    else:
+        # Switching to All Workspaces / Global overview
+        if current_user.role != UserRole.ADMIN:
+            raise ForbiddenError("Only administrators can switch to all workspaces view")
+        current_user.workspace_id = None
+        ws = None
+        ws_name = "All Workspaces (Admin)"
+
+    await db.commit()
+
+    refreshed_user = await db.execute(
+        select(User).options(selectinload(User.workspace)).where(User.id == current_user.id)
+    )
+    user = refreshed_user.scalar_one()
+
+    client_ip = request.client.host if request.client else None
+    await log_audit(
+        db=db,
+        user_id=current_user.id,
+        action="SWITCH_WORKSPACE",
+        resource_type="USER",
+        resource_id=str(user.id),
+        changes={"active_workspace": str(target_ws_id) if target_ws_id else None, "workspace_name": ws_name},
+        ip_address=client_ip,
+    )
+
+    resp = UserResponse.model_validate(user)
+    resp.workspace_name = ws.name if ws else None
+    return resp
+
+
+@router.post("/{workspace_id}/switch", response_model=UserResponse)
+async def switch_workspace_by_id(
+    workspace_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await switch_workspace(
+        request=request,
+        switch_in=WorkspaceSwitchRequest(workspace_id=workspace_id),
+        current_user=current_user,
+        db=db,
+    )

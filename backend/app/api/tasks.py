@@ -113,13 +113,17 @@ async def list_tasks(
         query = query.where(Task.project_id == project_id)
         count_query = count_query.where(Task.project_id == project_id)
     else:
-        # Filter to user's projects if not admin
+        # Filter to user's projects if not admin, or to switched workspace if admin
         if current_user.role != UserRole.ADMIN:
             user_projects_subq = select(ProjectMember.project_id).where(
                 ProjectMember.user_id == current_user.id
             )
             query = query.where(Task.project_id.in_(user_projects_subq))
             count_query = count_query.where(Task.project_id.in_(user_projects_subq))
+        elif current_user.workspace_id:
+            ws_projects_subq = select(Project.id).where(Project.workspace_id == current_user.workspace_id)
+            query = query.where(Task.project_id.in_(ws_projects_subq))
+            count_query = count_query.where(Task.project_id.in_(ws_projects_subq))
 
     if status:
         query = query.where(Task.status == status)

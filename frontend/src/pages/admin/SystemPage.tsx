@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { AuditLogEntry } from '../../types';
+import { AuditLogEntry, BackupStatus } from '../../types';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Table, Column } from '../../components/ui/Table';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import { Spinner } from '../../components/ui/Spinner';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { formatDate, formatFileSize } from '../../lib/utils';
@@ -16,7 +18,15 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  GitBranch,
+  GitCommit,
+  Download,
+  RotateCcw,
+  Sparkles,
+  Key,
+  Bot,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export const SystemPage: React.FC = () => {
   const [logPage, setLogPage] = useState(1);
@@ -36,6 +46,42 @@ export const SystemPage: React.FC = () => {
   } = useQuery({
     queryKey: ['system', 'info'],
     queryFn: () => api.system.getInfo(),
+  });
+
+  const queryClient = useQueryClient();
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [isUpdatingAI, setIsUpdatingAI] = useState(false);
+
+  // 4. Backup Status
+  const { data: backupStatus } = useQuery({
+    queryKey: ['system', 'backup-status'],
+    queryFn: () => api.backup.getStatus(),
+  });
+
+  // 5. AI Config
+  const { data: aiConfig } = useQuery({
+    queryKey: ['system', 'ai-config'],
+    queryFn: () => api.ai.getConfig(),
+  });
+
+  const triggerBackupMutation = useMutation({
+    mutationFn: () => api.backup.createBackup(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['system', 'backup-status'] });
+      toast.success(data.message || 'Database snapshot created!');
+    },
+    onError: () => toast.error('Failed to trigger backup snapshot'),
+  });
+
+  const updateAIMutation = useMutation({
+    mutationFn: (key: string) => api.ai.updateConfig(key),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system', 'ai-config'] });
+      toast.success('Google Gemini API key updated!');
+      setApiKeyInput('');
+      setIsUpdatingAI(false);
+    },
+    onError: () => toast.error('Failed to update Gemini API key'),
   });
 
   // 3. Audit Logs
@@ -222,6 +268,169 @@ export const SystemPage: React.FC = () => {
                   : 'Active'}
               </span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Git Backup & Google Gemini AI Integration Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Card 1: Git & Instant Database Restore */}
+        <div className="bg-white border border-border rounded-lg shadow-card p-5 flex flex-col justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <div className="flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-copper-600" />
+                <h3 className="text-sm font-bold text-text-primary">Git Version &amp; Instant Restore</h3>
+              </div>
+              <span className="font-mono text-xs px-2 py-0.5 rounded bg-copper-50 text-copper-800 border border-copper-200 font-semibold">
+                {backupStatus?.git_branch || 'main'}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-2.5 text-xs pt-1">
+              <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                <span className="text-text-muted flex items-center gap-1.5">
+                  <GitCommit className="w-3.5 h-3.5 text-slate-400" />
+                  Latest Commit
+                </span>
+                <span className="font-mono text-text-primary truncate max-w-[200px]" title={backupStatus?.git_commit}>
+                  {backupStatus?.git_commit || 'Synchronized'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                <span className="text-text-muted flex items-center gap-1.5">
+                  <Database className="w-3.5 h-3.5 text-slate-400" />
+                  Latest DB Snapshot
+                </span>
+                <span className="font-mono text-emerald-700 font-medium">
+                  {backupStatus?.latest_db_snapshot_size ? `${backupStatus.latest_db_snapshot_size} (${backupStatus.latest_db_snapshot_time})` : 'Pending creation'}
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex flex-col gap-1">
+                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                  Instant Terminal Restore Command:
+                </span>
+                <code className="text-[11px] font-mono text-slate-800 select-all bg-white px-2 py-1 rounded border border-slate-200">
+                  {backupStatus?.restore_command || 'sudo ./scripts/restore.sh'}
+                </code>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 flex items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+              isLoading={triggerBackupMutation.isPending}
+              onClick={() => triggerBackupMutation.mutate()}
+            >
+              Trigger Instant Snapshot
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<Download className="w-3.5 h-3.5" />}
+              onClick={() => api.backup.downloadSnapshot()}
+            >
+              Download Snapshot (.sql.gz)
+            </Button>
+          </div>
+        </div>
+
+        {/* Card 2: Google Gemini AI & Cloud Generative Config */}
+        <div className="bg-white border border-border rounded-lg shadow-card p-5 flex flex-col justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-text-primary">Google Gemini Cloud AI</h3>
+              </div>
+              <span className={`font-mono text-[11px] px-2 py-0.5 rounded font-semibold border ${
+                aiConfig?.has_api_key
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}>
+                {aiConfig?.has_api_key ? '● Cloud Live' : '● Rule Engine Active'}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-2 text-xs pt-1">
+              <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                <span className="text-text-muted">Target Model</span>
+                <span className="font-mono font-semibold text-text-primary">
+                  {aiConfig?.model || 'gemini-1.5-flash'}
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <span className="text-text-muted text-[11px]">Active Generative Capabilities:</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <span className="px-2 py-1 rounded bg-slate-50 border border-slate-200 text-[10px] text-slate-700 font-medium flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                    Task Bug Auto-Solver
+                  </span>
+                  <span className="px-2 py-1 rounded bg-slate-50 border border-slate-200 text-[10px] text-slate-700 font-medium flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                    Project AI Copilot
+                  </span>
+                  <span className="px-2 py-1 rounded bg-slate-50 border border-slate-200 text-[10px] text-slate-700 font-medium flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                    Datasheet Analyzer
+                  </span>
+                  <span className="px-2 py-1 rounded bg-slate-50 border border-slate-200 text-[10px] text-slate-700 font-medium flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                    1-Click Auto-Post Fix
+                  </span>
+                </div>
+              </div>
+
+              {isUpdatingAI ? (
+                <div className="flex flex-col gap-1.5 pt-2">
+                  <label className="text-[11px] font-semibold text-text-secondary">
+                    Enter Google Gemini API Key:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="password"
+                      placeholder="AIzaSy..."
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                    />
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={!apiKeyInput.trim() || updateAIMutation.isPending}
+                      isLoading={updateAIMutation.isPending}
+                      onClick={() => updateAIMutation.mutate(apiKeyInput)}
+                    >
+                      Save Key
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setIsUpdatingAI(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="pt-2 flex items-center justify-between">
+            <span className="text-[11px] text-text-muted">
+              {aiConfig?.has_api_key ? 'API key stored & encrypted' : 'Using PMS built-in expert diagnostics'}
+            </span>
+            {!isUpdatingAI && (
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={<Key className="w-3.5 h-3.5 text-copper-600" />}
+                onClick={() => setIsUpdatingAI(true)}
+              >
+                {aiConfig?.has_api_key ? 'Update Gemini Key' : 'Configure Gemini Key'}
+              </Button>
+            )}
           </div>
         </div>
       </div>

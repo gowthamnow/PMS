@@ -76,9 +76,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
         {/* Main Nav */}
         <div className="flex flex-col gap-0.5">
           {!isCollapsed && (
-            <span className="px-2.5 py-1 text-[10px] font-semibold tracking-wider text-text-muted uppercase">
-              Workspace
-            </span>
+            <div className="px-2.5 py-1.5 mb-1.5 bg-slate-50 border border-slate-200/80 rounded-md flex items-center justify-between">
+              <div className="flex items-center gap-1.5 overflow-hidden">
+                <span className="text-xs">🏢</span>
+                <span
+                  className="text-[11px] font-semibold text-slate-800 truncate max-w-[125px]"
+                  title={user?.workspace_name || (user?.role === 'ADMIN' ? 'All Workspaces (Admin)' : 'Engineering Workspace')}
+                >
+                  {user?.workspace_name || (user?.role === 'ADMIN' ? 'All Workspaces' : 'Engineering Workspace')}
+                </span>
+              </div>
+              {user?.role === 'ADMIN' && (
+                <NavLink
+                  to="/admin/users?tab=workspaces"
+                  className="text-[10px] text-copper-600 hover:text-copper-700 font-semibold hover:underline shrink-0"
+                  title="Switch workspace"
+                >
+                  Switch
+                </NavLink>
+              )}
+            </div>
           )}
           {mainNavItems.map((item) => {
             const Icon = item.icon;

@@ -23,6 +23,7 @@ from app.core.security import (
     verify_token,
 )
 from app.models.user import User, UserRole
+from app.models.workspace import Workspace
 from app.models.notification import NotificationType
 from app.services.notification_service import create_notification
 from app.schemas.user import (
@@ -289,6 +290,12 @@ async def google_login(
             username = f"{base_username}_{counter}"
             counter += 1
 
+        # Assign to default workspace if available
+        ws_stmt = select(Workspace).order_by(Workspace.created_at.asc()).limit(1)
+        ws_res = await db.execute(ws_stmt)
+        first_ws = ws_res.scalars().first()
+        default_ws_id = first_ws.id if first_ws else None
+
         user = User(
             id=uuid.uuid4(),
             username=username,
@@ -297,6 +304,7 @@ async def google_login(
             hashed_password=get_password_hash(uuid.uuid4().hex),
             role=UserRole.ADMIN if is_master_admin else UserRole.ENGINEER,
             is_active=True if is_master_admin else False,
+            workspace_id=default_ws_id,
             avatar_url=avatar_url,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),

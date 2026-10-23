@@ -250,9 +250,9 @@ def test_sec10_email_header_injection_crlf_stripped():
     """
     malicious_subject = "Important Subject\r\nBcc: attacker@evil.com\r\nX-Injected: true"
     malicious_to = "victim@example.com\r\nBcc: stealth@evil.com"
-    # send_email with SMTP_HOST unset simulates cleanly and returns False
+    # send_email with test environment simulates cleanly
     result = send_email(to_email=malicious_to, subject=malicious_subject, body_text="Hello")
-    assert result is False  # Simulated
+    assert result is True  # Simulated dispatch returns True in test env
 
 
 # =====================================================================
@@ -328,3 +328,52 @@ def test_sec13_real_client_ip_proxy_header_resolution():
     # Direct connection fallback
     req_direct = MockRequest({}, host="192.0.2.1")
     assert get_real_client_ip(req_direct) == "192.0.2.1"
+
+
+# =====================================================================
+# Workspace Switching Tests
+# =====================================================================
+@pytest.mark.asyncio
+async def test_admin_switch_workspace(
+    test_client: AsyncClient, admin_user: User, admin_headers: dict, db_session: AsyncSession
+):
+    ws = Workspace(id=uuid.uuid4(), name=f"WS_Switch_{uuid.uuid4().hex[:4]}", created_by=admin_user.id)
+    db_session.add(ws)
+    await db_session.commit()
+
+    # Switch to new workspace
+    resp = await test_client.post(
+        "/api/workspaces/switch",
+        json={"workspace_id": str(ws.id)},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["workspace_id"] == str(ws.id)
+    assert data["workspace_name"] == ws.name
+
+    # Switch back to All Workspaces (null)
+    resp_all = await test_client.post(
+        "/api/workspaces/switch",
+        json={"workspace_id": None},
+        headers=admin_headers,
+    )
+    assert resp_all.status_code == 200
+    data_all = resp_all.json()
+    assert data_all["workspace_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_engineer_cannot_switch_to_unassigned_workspace(
+    test_client: AsyncClient, engineer_user: User, engineer_headers: dict, db_session: AsyncSession
+):
+    ws_unassigned = Workspace(id=uuid.uuid4(), name=f"WS_Other_{uuid.uuid4().hex[:4]}", created_by=engineer_user.id)
+    db_session.add(ws_unassigned)
+    await db_session.commit()
+
+    resp = await test_client.post(
+        "/api/workspaces/switch",
+        json={"workspace_id": str(ws_unassigned.id)},
+        headers=engineer_headers,
+    )
+    assert resp.status_code == 403

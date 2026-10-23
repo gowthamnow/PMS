@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
 import { User, UserRole, Workspace } from '../../types';
 import { Table, Column } from '../../components/ui/Table';
@@ -32,6 +33,8 @@ import {
   AlertTriangle,
   UserMinus,
   Check,
+  ArrowRightLeft,
+  Layers,
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -57,6 +60,7 @@ const workspaceSchema = z.object({
 type WorkspaceFormData = z.infer<typeof workspaceSchema>;
 
 export const UsersPage: React.FC = () => {
+  const { user: currentUser, switchWorkspace } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') === 'workspaces' ? 'workspaces' : 'users';
@@ -72,6 +76,7 @@ export const UsersPage: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [toggleConfirmUser, setToggleConfirmUser] = useState<User | null>(null);
   const [resetConfirmUser, setResetConfirmUser] = useState<User | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   // Workspace States
   const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState(false);
@@ -79,6 +84,22 @@ export const UsersPage: React.FC = () => {
   const [workspaceToDelete, setWorkspaceToDelete] = useState<Workspace | null>(null);
   const [managingMembersWorkspace, setManagingMembersWorkspace] = useState<Workspace | null>(null);
   const [selectedUserToAssign, setSelectedUserToAssign] = useState<string>('');
+  const [autoSwitchToCreated, setAutoSwitchToCreated] = useState(true);
+  const [isSwitchingWorkspace, setIsSwitchingWorkspace] = useState(false);
+
+  const handleSwitchWorkspace = async (wsId: string | null, wsName: string) => {
+    if (isSwitchingWorkspace) return;
+    setIsSwitchingWorkspace(true);
+    try {
+      await switchWorkspace(wsId);
+      await queryClient.invalidateQueries();
+      toast.success(`Active Workspace: ${wsName}`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to switch workspace');
+    } finally {
+      setIsSwitchingWorkspace(false);
+    }
+  };
 
   // 1. Fetch Users
   const { data, isLoading } = useQuery({
@@ -258,13 +279,37 @@ export const UsersPage: React.FC = () => {
     onError: () => toast.error('Failed to reset password'),
   });
 
+  // Delete User Mutation
+  const deleteUserMutation = useMutation({
+    mutationFn: (userId: string) => api.users.deleteUser(userId),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['all-users-lookup'] });
+      setUserToDelete(null);
+      toast.success(res?.message || 'User deleted successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to delete user');
+    },
+  });
+
   // Create Workspace Mutation
   const createWorkspaceMutation = useMutation({
     mutationFn: (data: WorkspaceFormData) => api.workspaces.createWorkspace(data),
-    onSuccess: () => {
+    onSuccess: async (createdWs) => {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       setIsWorkspaceModalOpen(false);
-      toast.success('Workspace created successfully');
+      if (autoSwitchToCreated && createdWs?.id) {
+        try {
+          await switchWorkspace(createdWs.id);
+          await queryClient.invalidateQueries();
+          toast.success(`Created & switched into workspace: ${createdWs.name}`);
+        } catch {
+          toast.success('Workspace created successfully');
+        }
+      } else {
+        toast.success('Workspace created successfully');
+      }
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || 'Failed to create workspace');
@@ -456,6 +501,15 @@ export const UsersPage: React.FC = () => {
           >
             {u.is_active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
           </button>
+          {u.id !== currentUser?.id && u.email !== 'gowthamthangaraj18@gmail.com' && (
+            <button
+              onClick={() => setUserToDelete(u)}
+              className="p-1 text-text-muted hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+              title="Permanently Delete User"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -576,13 +630,48 @@ export const UsersPage: React.FC = () => {
       {/* TAB 2: WORKSPACES MANAGEMENT */}
       {activeTab === 'workspaces' && (
         <div className="flex flex-col gap-5">
+          {/* Active Workspace Banner */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-copper-50 border border-copper-100 flex items-center justify-center text-lg shrink-0">
+                🏢
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-900">Current Active Workspace:</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-copper-100 text-copper-800 border border-copper-200">
+                    {currentUser?.workspace_name || 'All Workspaces (Admin Overview)'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {currentUser?.workspace_id
+                    ? 'Currently scoped to this workspace. Dashboard metrics, project lists, and task views reflect this active workspace.'
+                    : 'Viewing consolidated company-wide engineering data across all workspaces.'}
+                </p>
+              </div>
+            </div>
+
+            {currentUser?.workspace_id && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleSwitchWorkspace(null, 'All Workspaces (Global)')}
+                disabled={isSwitchingWorkspace}
+                className="text-xs h-8 shrink-0 hover:bg-slate-100"
+              >
+                <Layers className="w-3.5 h-3.5 mr-1.5" />
+                Switch to All Workspaces
+              </Button>
+            )}
+          </div>
+
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs text-slate-600 flex flex-col gap-1">
             <span className="font-semibold text-slate-900 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-copper-600" />
               Workspace Access Control Policy
             </span>
             <p className="leading-relaxed">
-              Administrators have full visibility across all workspaces. Regular engineers and project managers are strictly restricted to accessing only their single assigned workspace and projects within that workspace.
+              Administrators can seamlessly switch between workspaces or view company-wide data. Regular engineers and project managers are strictly confined to their single assigned workspace and projects.
             </p>
           </div>
 
@@ -598,80 +687,117 @@ export const UsersPage: React.FC = () => {
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {workspaces.map((ws) => (
-                <div
-                  key={ws.id}
-                  className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between gap-4 hover:border-slate-300 transition-all"
-                >
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className="p-2 rounded-lg bg-copper-50 text-copper-700 border border-copper-100 font-bold text-sm">
-                          🏢
-                        </span>
-                        <div>
-                          <h3 className="text-sm font-bold text-slate-900 leading-tight">
-                            {ws.name}
-                          </h3>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            Created {formatDate(ws.created_at, 'MMM d, yyyy')}
+              {workspaces.map((ws) => {
+                const isActiveWorkspace = currentUser?.workspace_id === ws.id;
+                return (
+                  <div
+                    key={ws.id}
+                    className={`bg-white border rounded-xl p-5 shadow-xs flex flex-col justify-between gap-4 transition-all ${
+                      isActiveWorkspace
+                        ? 'border-copper-500 ring-2 ring-copper-500/20 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`p-2 rounded-lg font-bold text-sm border ${
+                            isActiveWorkspace
+                              ? 'bg-copper-600 text-white border-copper-700'
+                              : 'bg-copper-50 text-copper-700 border-copper-100'
+                          }`}>
+                            🏢
                           </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                                {ws.name}
+                              </h3>
+                              {isActiveWorkspace && (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold inline-flex items-center gap-1">
+                                  <Check className="w-3 h-3 text-emerald-600" /> Active
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              Created {formatDate(ws.created_at, 'MMM d, yyyy')}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditWorkspaceModal(ws)}
+                            className="p-1 rounded text-slate-400 hover:text-copper-700 hover:bg-slate-100"
+                            title="Edit Workspace"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWorkspaceToDelete(ws)}
+                            disabled={workspaces.length <= 1}
+                            className={`p-1 rounded ${
+                              workspaces.length <= 1
+                                ? 'text-slate-200 cursor-not-allowed'
+                                : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
+                            }`}
+                            title={workspaces.length <= 1 ? 'Cannot delete the only workspace' : 'Delete Workspace'}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => openEditWorkspaceModal(ws)}
-                          className="p-1 rounded text-slate-400 hover:text-copper-700 hover:bg-slate-100"
-                          title="Edit Workspace"
+                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed min-h-[32px]">
+                        {ws.description || 'No description provided for this engineering workspace.'}
+                      </p>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1 font-mono text-[11px] text-slate-700">
+                          <FolderOpen className="w-3.5 h-3.5 text-copper-600" />
+                          <strong>{ws.project_count}</strong> {ws.project_count === 1 ? 'project' : 'projects'}
+                        </span>
+                        <span className="flex items-center gap-1 font-mono text-[11px] text-slate-700">
+                          <Users className="w-3.5 h-3.5 text-emerald-600" />
+                          <strong>{ws.member_count}</strong> {ws.member_count === 1 ? 'member' : 'members'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {isActiveWorkspace ? (
+                          <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-[11px] font-semibold flex items-center gap-1 shadow-2xs">
+                            <Check className="w-3 h-3 text-emerald-600" /> Active
+                          </span>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleSwitchWorkspace(ws.id, ws.name)}
+                            disabled={isSwitchingWorkspace}
+                            className="text-[11px] h-7 px-2.5 bg-copper-50 text-copper-800 hover:bg-copper-100 border-copper-200"
+                          >
+                            <ArrowRightLeft className="w-3 h-3 mr-1" />
+                            Switch Into
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setManagingMembersWorkspace(ws)}
+                          className="text-[11px] h-7 px-2 hover:bg-slate-100"
+                          title="Manage team members"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setWorkspaceToDelete(ws)}
-                          disabled={workspaces.length <= 1}
-                          className={`p-1 rounded ${
-                            workspaces.length <= 1
-                              ? 'text-slate-200 cursor-not-allowed'
-                              : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
-                          }`}
-                          title={workspaces.length <= 1 ? 'Cannot delete the only workspace' : 'Delete Workspace'}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                          Team
+                        </Button>
                       </div>
                     </div>
-
-                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed min-h-[32px]">
-                      {ws.description || 'No description provided for this engineering workspace.'}
-                    </p>
                   </div>
-
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                    <div className="flex items-center gap-3">
-                      <span className="flex items-center gap-1 font-mono text-[11px] text-slate-700">
-                        <FolderOpen className="w-3.5 h-3.5 text-copper-600" />
-                        <strong>{ws.project_count}</strong> {ws.project_count === 1 ? 'project' : 'projects'}
-                      </span>
-                      <span className="flex items-center gap-1 font-mono text-[11px] text-slate-700">
-                        <Users className="w-3.5 h-3.5 text-emerald-600" />
-                        <strong>{ws.member_count}</strong> {ws.member_count === 1 ? 'member' : 'members'}
-                      </span>
-                    </div>
-
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setManagingMembersWorkspace(ws)}
-                      className="text-[11px] h-7 px-2.5"
-                    >
-                      Manage Team
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -794,6 +920,21 @@ export const UsersPage: React.FC = () => {
             error={workspaceErrors.description?.message}
             {...registerWorkspace('description')}
           />
+
+          {!editingWorkspace && (
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+              <input
+                type="checkbox"
+                id="autoSwitch"
+                checked={autoSwitchToCreated}
+                onChange={(e) => setAutoSwitchToCreated(e.target.checked)}
+                className="rounded border-slate-300 text-copper-600 focus:ring-copper-500 cursor-pointer"
+              />
+              <label htmlFor="autoSwitch" className="text-xs text-slate-700 cursor-pointer select-none font-medium">
+                Switch into this workspace immediately after creation
+              </label>
+            </div>
+          )}
         </form>
       </Modal>
 
@@ -966,6 +1107,17 @@ export const UsersPage: React.FC = () => {
         variant="primary"
         onConfirm={() => resetConfirmUser && resetPasswordMutation.mutate(resetConfirmUser)}
         onClose={() => setResetConfirmUser(null)}
+      />
+
+      {/* Confirm Permanent Delete User Dialog */}
+      <ConfirmDialog
+        isOpen={!!userToDelete}
+        title="Permanently Delete User"
+        message={`Are you sure you want to permanently delete user "${userToDelete?.full_name || userToDelete?.username}" (${userToDelete?.email})? All assigned tasks will be unassigned and projects will be safely preserved.`}
+        confirmLabel="Delete User"
+        variant="danger"
+        onConfirm={() => userToDelete && deleteUserMutation.mutate(userToDelete.id)}
+        onClose={() => setUserToDelete(null)}
       />
     </div>
   );
