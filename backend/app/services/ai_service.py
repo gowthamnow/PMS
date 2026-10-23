@@ -287,7 +287,48 @@ def generate_expert_rule_based_task_solution(
             ]
         }
 
-    # 5. Generic Hardware / Firmware / Engineering Issue Fallback
+    # 5. Message Email & In-App Notification
+    if any(k in title_lower or k in desc_lower for k in ["message", "mail notification", "notification in mail", "someone message"]):
+        return {
+            "issue_type": "FEATURE",
+            "root_cause": (
+                "In `backend/app/api/messages.py`, sending direct messages and project channel messages only stored raw records in the database. "
+                "There was no email dispatch trigger or in-app bell notification alerting the recipient of new messages."
+            ),
+            "solution_summary": (
+                "Integrated `send_message_notification_email` in `backend/app/services/email_service.py` and `backend/app/api/messages.py`. "
+                "Whenever a team member sends a direct message or project channel post, the recipient receives a branded HTML email notification "
+                "with the message preview and a 1-click reply link, along with an in-app notification in the top navigation bar."
+            ),
+            "action_plan": [
+                "Implement `send_message_notification_email` in `backend/app/services/email_service.py`.",
+                "In `backend/app/api/messages.py::send_message`, resolve recipient user details and dispatch email.",
+                "Create corresponding `Notification` record in the database for the topnav bell alert.",
+                "Verify email header injection defenses and test environment simulation."
+            ],
+            "code_fixes": [
+                CodeFixItem(
+                    file_path="backend/app/api/messages.py",
+                    description="Email & in-app notification dispatch on send_message",
+                    code_snippet="""if recipient and recipient.email:
+    send_message_notification_email(
+        recipient_email=recipient.email,
+        recipient_name=recipient.full_name or recipient.username,
+        sender_name=sender_label,
+        message_content=message_in.content.strip(),
+        conversation_title='Direct Message',
+    )""",
+                    language="python"
+                )
+            ],
+            "testing_steps": [
+                "Send a direct message from User A to User B.",
+                "Verify User B receives email alert with sender name and message preview.",
+                "Verify in-app bell notification increments in TopNav."
+            ]
+        }
+
+    # 6. Generic Hardware / Firmware / Engineering Issue Fallback
     return {
         "issue_type": "BUG",
         "root_cause": (
@@ -488,15 +529,24 @@ Please respond in this exact JSON structure:
     comment_id = None
 
     if auto_post_comment and current_user:
+        # If task was assigned to ai_engineer, post comment as ai_engineer if available
+        ai_user_stmt = select(User).where(User.username == "ai_engineer")
+        ai_user = (await db.execute(ai_user_stmt)).scalar_one_or_none()
+        poster_id = ai_user.id if (ai_user and task.assignee_id == ai_user.id) else current_user.id
+
         new_comment = TaskComment(
             id=uuid.uuid4(),
             task_id=task.id,
-            user_id=current_user.id,
+            user_id=poster_id,
             content=formatted_markdown,
         )
         db.add(new_comment)
+
+        # Mark task as DONE upon successful AI resolution
+        task.status = TaskStatus.DONE
         await db.commit()
         await db.refresh(new_comment)
+        await db.refresh(task)
         comment_posted = True
         comment_id = new_comment.id
 

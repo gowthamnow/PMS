@@ -9,8 +9,10 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_active_user, get_db
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
 from app.models.message import Message
+from app.models.notification import Notification, NotificationType
 from app.models.project import Project, ProjectMember
 from app.models.user import User, UserRole
+from app.services.email_service import send_message_notification_email
 from app.schemas.message import ConversationResponse, MessageCreate, MessageResponse
 
 router = APIRouter(prefix="/messages", tags=["Messages"])
@@ -121,6 +123,69 @@ async def send_message(
     db.add(msg)
     await db.commit()
     await db.refresh(msg)
+
+    # Dispatched email & in-app notifications
+    try:
+        sender_label = current_user.full_name or current_user.username
+        if message_in.recipient_id:
+            rec_stmt = select(User).where(User.id == message_in.recipient_id)
+            recipient = (await db.execute(rec_stmt)).scalar_one_or_none()
+            if recipient:
+                # 1. In-app notification
+                inapp = Notification(
+                    id=uuid.uuid4(),
+                    user_id=recipient.id,
+                    type=NotificationType.COMMENT_MENTION,
+                    title=f"New Message from {sender_label}",
+                    body=message_in.content.strip()[:160],
+                    is_read=False,
+                    related_project_id=message_in.project_id,
+                )
+                db.add(inapp)
+                await db.commit()
+
+                # 2. Email notification
+                if recipient.email:
+                    send_message_notification_email(
+                        recipient_email=recipient.email,
+                        recipient_name=recipient.full_name or recipient.username,
+                        sender_name=sender_label,
+                        message_content=message_in.content.strip(),
+                        conversation_title="Direct Message",
+                    )
+        elif message_in.project_id:
+            p_stmt = select(Project).where(Project.id == message_in.project_id)
+            project = (await db.execute(p_stmt)).scalar_one_or_none()
+            if project:
+                # Notify active project members except sender
+                mem_stmt = (
+                    select(User)
+                    .join(ProjectMember, ProjectMember.user_id == User.id)
+                    .where(ProjectMember.project_id == message_in.project_id, User.id != current_user.id)
+                )
+                members = (await db.execute(mem_stmt)).scalars().all()
+                for m in members:
+                    inapp = Notification(
+                        id=uuid.uuid4(),
+                        user_id=m.id,
+                        type=NotificationType.PROJECT_UPDATED,
+                        title=f"New message in #{project.name}",
+                        body=f"{sender_label}: {message_in.content.strip()[:140]}",
+                        is_read=False,
+                        related_project_id=project.id,
+                    )
+                    db.add(inapp)
+                    if m.email:
+                        send_message_notification_email(
+                            recipient_email=m.email,
+                            recipient_name=m.full_name or m.username,
+                            sender_name=sender_label,
+                            message_content=message_in.content.strip(),
+                            conversation_title=f"#{project.name}",
+                        )
+                await db.commit()
+    except Exception as exc:
+        pass
 
     # Reload relationships
     stmt = (

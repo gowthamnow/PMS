@@ -890,3 +890,70 @@ Hardware & Firmware Workspace
 </html>"""
 
     return subject, body_text, body_html
+
+def send_message_notification_email(
+    recipient_email: str,
+    recipient_name: str,
+    sender_name: str,
+    message_content: str,
+    conversation_title: str,
+    app_url: str = "",
+) -> bool:
+    """
+    Sends an email notification when a team member receives a message or project update.
+    """
+    subject = f"💬 New Message from {sender_name} on Engineering PMS"
+    safe_content = message_content[:280] + ("..." if len(message_content) > 280 else "")
+
+    body_text = f"""Hello {recipient_name},
+
+You received a new message on Engineering PMS.
+
+From: {sender_name}
+Conversation: {conversation_title}
+
+Message:
+------------------------------------------------------
+{safe_content}
+------------------------------------------------------
+
+Log in to Engineering PMS to view and reply:
+{app_url or 'https://crest-orientation-subject-physicians.trycloudflare.com/messages'}
+
+Best regards,
+Engineering PMS Team
+"""
+
+    body_html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; padding: 24px; margin: 0;">
+  <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+    <div style="background: linear-gradient(135deg, #d97706 0%, #b45309 100%); padding: 18px 24px;">
+      <h2 style="color: #ffffff; margin: 0; font-size: 17px; font-weight: 600;">Engineering PMS &bull; New Message Alert</h2>
+    </div>
+    <div style="padding: 24px;">
+      <p style="color: #334155; font-size: 14px; margin: 0 0 14px 0;">Hello <strong>{recipient_name}</strong>,</p>
+      <p style="color: #334155; font-size: 14px; margin: 0 0 16px 0;">
+        <strong>{sender_name}</strong> sent a message in <strong>{conversation_title}</strong>:
+      </p>
+      <div style="background-color: #f1f5f9; border-left: 4px solid #d97706; padding: 14px 18px; margin: 16px 0; border-radius: 4px;">
+        <p style="color: #1e293b; font-size: 14px; margin: 0; white-space: pre-wrap; font-style: italic;">{safe_content}</p>
+      </div>
+      <div style="margin: 24px 0 10px 0;">
+        <a href="{app_url or 'https://crest-orientation-subject-physicians.trycloudflare.com/messages'}" style="display: inline-block; background-color: #d97706; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 13px; padding: 10px 22px; border-radius: 6px;">Open Messages & Reply</a>
+      </div>
+    </div>
+    <div style="background-color: #f8fafc; padding: 12px 24px; border-top: 1px solid #e2e8f0; text-align: center;">
+      <span style="font-size: 11px; color: #94a3b8;">Engineering PMS Notification Service &bull; Hardware & Software Team Hub</span>
+    </div>
+  </div>
+</body>
+</html>"""
+
+    return send_email(
+        to_email=recipient_email,
+        subject=subject,
+        body_text=body_text,
+        body_html=body_html,
+    )

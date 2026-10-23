@@ -49,8 +49,10 @@ export const AIAutoSolveModal: React.FC<AIAutoSolveModalProps> = ({
       setSolution(data);
       if (data.comment_posted) {
         queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
+        queryClient.invalidateQueries({ queryKey: ['tasks', taskId] });
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
         if (onCommentPosted) onCommentPosted();
-        toast.success('AI technical resolution posted directly to task comments!');
+        toast.success('AI technical resolution applied & task marked as DONE!');
       } else {
         toast.success('AI technical resolution synthesized!');
       }
@@ -79,9 +81,12 @@ export const AIAutoSolveModal: React.FC<AIAutoSolveModalProps> = ({
     if (!solution) return;
     try {
       await api.tasks.addComment(taskId, solution.formatted_markdown);
+      await api.tasks.updateTaskStatus(taskId, 'DONE');
       queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       if (onCommentPosted) onCommentPosted();
-      toast.success('AI resolution posted to task comments!');
+      toast.success('AI resolution posted and task marked as DONE!');
       onClose();
     } catch {
       toast.error('Failed to post comment');
