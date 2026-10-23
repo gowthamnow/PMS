@@ -740,7 +740,7 @@ export const ProjectDetailPage: React.FC = () => {
             {allUsersData?.items
               ?.filter(
                 (u) =>
-                  (!project?.workspace_id || u.workspace_id === project?.workspace_id) &&
+                  (!project?.workspace_id || u.workspace_id === project?.workspace_id || u.username === 'ai_engineer') &&
                   !members.some((m) => m.user_id === u.id)
               )
               .map((u) => (

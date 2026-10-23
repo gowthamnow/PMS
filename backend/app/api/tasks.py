@@ -566,6 +566,7 @@ async def update_task_comment(
 async def delete_task_comment(
     task_id: uuid.UUID,
     comment_id: uuid.UUID,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -576,12 +577,24 @@ async def delete_task_comment(
     if not comment:
         raise NotFoundError("Comment not found")
 
-    if comment.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise ForbiddenError("Cannot delete another user's comment")
+    if current_user.role != UserRole.ADMIN:
+        raise ForbiddenError("Only administrators can delete task updates")
 
+    comment_snippet = comment.content[:100] if comment.content else ""
     await db.delete(comment)
     await db.commit()
-    return {"message": "Comment deleted successfully"}
+
+    client_ip = request.client.host if request.client else None
+    await log_audit(
+        db=db,
+        user_id=current_user.id,
+        action="DELETE_TASK_COMMENT",
+        resource_type="TASK_COMMENT",
+        resource_id=str(comment_id),
+        changes={"task_id": str(task_id), "snippet": comment_snippet},
+        ip_address=client_ip,
+    )
+    return {"message": "Update deleted successfully"}
 
 
 # Dependencies

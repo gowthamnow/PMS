@@ -201,6 +201,8 @@ export const api = {
       apiClient.get(`/tasks/${taskId}/comments`),
     getTaskComments: (taskId: string): Promise<TaskComment[]> =>
       apiClient.get(`/tasks/${taskId}/comments`),
+    deleteComment: (taskId: string, commentId: string): Promise<any> =>
+      apiClient.delete(`/tasks/${taskId}/comments/${commentId}`),
     logWork: (data: any): Promise<TimeEntry> => apiClient.post('/time-entries', data),
     addTimeEntry: (data: any): Promise<TimeEntry> => apiClient.post('/time-entries', data),
     getTimeEntries: async (params?: any): Promise<TimeEntry[]> => {

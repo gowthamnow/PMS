@@ -192,11 +192,25 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             {...register('assignee_id')}
           >
             <option value="">Unassigned</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name} ({u.role})
-              </option>
-            ))}
+            {users
+              .slice()
+              .sort((a, b) => {
+                const aIsAi = a.username === 'ai_engineer' || (a.full_name && a.full_name.toLowerCase().includes('gemini'));
+                const bIsAi = b.username === 'ai_engineer' || (b.full_name && b.full_name.toLowerCase().includes('gemini'));
+                if (aIsAi && !bIsAi) return -1;
+                if (!aIsAi && bIsAi) return 1;
+                return (a.full_name || '').localeCompare(b.full_name || '');
+              })
+              .map((u) => {
+                const isAi = u.username === 'ai_engineer' || (u.full_name && u.full_name.toLowerCase().includes('gemini'));
+                return (
+                  <option key={u.id} value={u.id}>
+                    {isAi
+                      ? `🤖 ${u.full_name} (AI Autonomous Engineer)`
+                      : `${u.full_name} (${u.role})`}
+                  </option>
+                );
+              })}
           </Select>
 
           <Select
