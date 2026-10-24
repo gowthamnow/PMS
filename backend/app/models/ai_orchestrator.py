@@ -76,7 +76,7 @@ class AITaskExecution(Base):
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    status = Column(Enum(AIExecutionStatus), default=AIExecutionStatus.QUEUED, nullable=False, index=True)
+    status = Column(Enum(AIExecutionStatus, name="ai_execution_status"), default=AIExecutionStatus.QUEUED, nullable=False, index=True)
     autonomy_level = Column(Integer, default=AIAutonomyLevel.LEVEL_2_APPROVED_AUTOMATION, nullable=False)
     current_stage = Column(String(50), default="ANALYSIS", nullable=False)
     selected_model = Column(String(100), default="gemini-1.5-pro", nullable=False)
@@ -127,8 +127,8 @@ class AIExecutionStep(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     execution_id = Column(UUID(as_uuid=True), ForeignKey("ai_task_executions.id", ondelete="CASCADE"), nullable=False, index=True)
     step_index = Column(Integer, nullable=False)
-    agent_role = Column(Enum(AIAgentRole), nullable=False)
-    status = Column(Enum(AIStepStatus), default=AIStepStatus.PENDING, nullable=False)
+    agent_role = Column(Enum(AIAgentRole, name="ai_agent_role"), nullable=False)
+    status = Column(Enum(AIStepStatus, name="ai_step_status"), default=AIStepStatus.PENDING, nullable=False)
     title = Column(String(255), nullable=False)
     summary = Column(Text, nullable=True)
     output_data = Column(JSON, default=dict, nullable=False)
@@ -177,7 +177,7 @@ class AIToolInvocation(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     execution_id = Column(UUID(as_uuid=True), ForeignKey("ai_task_executions.id", ondelete="CASCADE"), nullable=False, index=True)
-    agent_role = Column(Enum(AIAgentRole), nullable=False)
+    agent_role = Column(Enum(AIAgentRole, name="ai_agent_role"), nullable=False)
     tool_name = Column(String(100), nullable=False, index=True)
     input_payload = Column(JSON, default=dict, nullable=False)
     output_summary = Column(Text, nullable=True)

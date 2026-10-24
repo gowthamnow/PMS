@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 import json
 import logging
 from pathlib import Path
@@ -82,6 +83,11 @@ class AIOrchestrator:
         self.router = AIModelRouter()
         return True
 
+    def _add_cost_and_tokens(self, tokens: int, cost: float):
+        self.execution.tokens_used += tokens
+        current_cost = float(self.execution.estimated_cost_usd or 0.0)
+        self.execution.estimated_cost_usd = Decimal(str(round(current_cost + cost, 4)))
+
     async def record_tool_call(
         self,
         agent_role: AIAgentRole,
@@ -119,8 +125,11 @@ class AIOrchestrator:
         duration_seconds: float = 0.0,
     ) -> AIExecutionStep:
         """Records or updates a sub-stage execution step."""
-        # Check if step exists
-        existing = next((s for s in (self.execution.steps or []) if s.step_index == step_index), None)
+        stmt = select(AIExecutionStep).where(
+            AIExecutionStep.execution_id == self.execution.id,
+            AIExecutionStep.step_index == step_index,
+        )
+        existing = (await self.db.execute(stmt)).scalar_one_or_none()
         if existing:
             existing.status = status
             if summary:
@@ -149,7 +158,6 @@ class AIOrchestrator:
         )
         self.db.add(step)
         await self.db.commit()
-        await self.db.refresh(self.execution)
         return step
 
     async def update_status(self, new_status: AIExecutionStatus, current_stage: str, error_msg: Optional[str] = None):
@@ -200,8 +208,7 @@ Output valid JSON matching this schema:
             "requires_human_clarification": False,
         }
 
-        self.execution.tokens_used += res.total_tokens
-        self.execution.estimated_cost_usd += res.cost_usd
+        self._add_cost_and_tokens(res.total_tokens, res.cost_usd)
         dur = round(time.time() - start_t, 2)
 
         await self.record_step(
@@ -329,8 +336,7 @@ Respond in exact JSON format:
         self.db.add(plan)
         await self.db.commit()
 
-        self.execution.tokens_used += res.total_tokens
-        self.execution.estimated_cost_usd += res.cost_usd
+        self._add_cost_and_tokens(res.total_tokens, res.cost_usd)
         dur = round(time.time() - start_t, 2)
 
         await self.record_step(
@@ -387,8 +393,7 @@ Respond in exact JSON format:
 }}"""
 
             res = await self.router.execute_prompt(prompt, model_name=self.router.select_model("BACKEND_CODING_AGENT"))
-            self.execution.tokens_used += res.total_tokens
-            self.execution.estimated_cost_usd += res.cost_usd
+            self._add_cost_and_tokens(res.total_tokens, res.cost_usd)
 
             patch_data = res.structured_data or {
                 "file_path": target_file,

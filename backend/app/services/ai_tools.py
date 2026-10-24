@@ -11,8 +11,17 @@ from app.config import settings
 
 logger = logging.getLogger("ai_tools")
 
+def find_repo_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in [current] + list(current.parents):
+        if (parent / ".git").exists() or (parent / "docker-compose.yml").exists() or (parent / "backend").exists():
+            return parent
+    if Path("/app").exists() and (Path("/app/app").exists() or Path("/app/main.py").exists()):
+        return Path("/app")
+    return Path.cwd()
+
 # Root directory of the repository (anchored safely)
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+REPO_ROOT = find_repo_root()
 
 
 class ToolSecurityError(Exception):
@@ -70,7 +79,7 @@ class AIToolExecutionLayer:
             return {"error": f"Directory '{rel_path}' does not exist"}
 
         tree: List[Dict[str, Any]] = []
-        skip_dirs = {".git", "node_modules", ".venv", "__pycache__", "dist", ".gemini"}
+        skip_dirs = {".git", "node_modules", ".venv", "__pycache__", "dist", ".gemini", "proc", "sys", "dev"}
 
         def walk(current: Path, depth: int):
             if depth > max_depth:
@@ -79,17 +88,24 @@ class AIToolExecutionLayer:
                 for entry in sorted(current.iterdir(), key=lambda p: (not p.is_dir(), p.name)):
                     if entry.name in skip_dirs or entry.name.startswith("."):
                         continue
+                    try:
+                        if entry.is_symlink():
+                            continue
+                        is_directory = entry.is_dir()
+                        size = 0 if is_directory else entry.stat().st_size
+                    except (OSError, FileNotFoundError):
+                        continue
+
                     item = {
                         "name": entry.name,
                         "path": entry.relative_to(self.workspace_dir).as_posix(),
-                        "is_dir": entry.is_dir(),
+                        "is_dir": is_directory,
+                        "size_bytes": size,
                     }
-                    if not entry.is_dir():
-                        item["size_bytes"] = entry.stat().st_size
                     tree.append(item)
-                    if entry.is_dir():
+                    if is_directory:
                         walk(entry, depth + 1)
-            except PermissionError:
+            except (PermissionError, OSError):
                 pass
 
         walk(target_dir, 1)
