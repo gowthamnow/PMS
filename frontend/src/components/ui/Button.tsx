@@ -2,7 +2,7 @@ import React, { ButtonHTMLAttributes, forwardRef } from 'react';
 import { cn } from '../../lib/utils';
 import { Spinner } from './Spinner';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -36,6 +36,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         'bg-copper-600 hover:bg-copper-700 text-white shadow-subtle border border-copper-700 active:bg-copper-800',
       secondary:
         'bg-white border border-border text-text-primary hover:bg-slate-50 active:bg-slate-100 shadow-subtle',
+      outline:
+        'bg-transparent border border-border text-text-primary hover:bg-slate-50 active:bg-slate-100 shadow-subtle',
       ghost:
         'bg-transparent text-text-secondary hover:bg-slate-100 hover:text-text-primary active:bg-slate-200',
       danger:

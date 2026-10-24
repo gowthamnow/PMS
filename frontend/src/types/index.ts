@@ -394,3 +394,117 @@ export interface BackupStatus {
   restore_command: string;
 }
 
+// AI Orchestrator Engine Types
+export type AIExecutionStatus =
+  | 'QUEUED'
+  | 'ANALYZING'
+  | 'PLAN_PENDING'
+  | 'WAITING_FOR_APPROVAL'
+  | 'IMPLEMENTING'
+  | 'TESTING'
+  | 'REVIEW_READY'
+  | 'COMPLETED'
+  | 'BLOCKED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'REQUIRES_HUMAN';
+
+export interface AIExecutionStep {
+  id: string;
+  execution_id: string;
+  step_index: number;
+  agent_role: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+  title: string;
+  summary?: string;
+  output_data: Record<string, any>;
+  duration_seconds: number;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface AIImplementationPlan {
+  id: string;
+  execution_id: string;
+  task_id: string;
+  problem_statement: string;
+  expected_outcome: string;
+  acceptance_criteria: string[];
+  affected_files: string[];
+  planned_steps: Array<{ step: number; description: string; expected_action?: string }>;
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  risk_rationale?: string;
+  requires_human_approval: boolean;
+  is_approved: boolean;
+  approved_by_id?: string;
+  approved_at?: string;
+  feedback?: string;
+  created_at: string;
+}
+
+export interface AITaskExecution {
+  id: string;
+  task_id: string;
+  task_title?: string;
+  task_number?: number;
+  project_id: string;
+  project_name?: string;
+  workspace_id?: string;
+  creator_id: string;
+  creator_name?: string;
+  status: AIExecutionStatus;
+  autonomy_level: number;
+  current_stage: string;
+  selected_model: string;
+  git_branch?: string;
+  git_base_branch: string;
+  git_head_commit?: string;
+  github_pr_number?: number;
+  github_pr_url?: string;
+  github_pr_status: string;
+  is_approved_by_human: boolean;
+  approved_by_id?: string;
+  approved_at?: string;
+  rejection_reason?: string;
+  tokens_used: number;
+  estimated_cost_usd: number;
+  duration_seconds: number;
+  retry_count: number;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string;
+  steps: AIExecutionStep[];
+  plan?: AIImplementationPlan;
+}
+
+export interface AIControlCenterStats {
+  total_executions: number;
+  active_count: number;
+  queued_count: number;
+  awaiting_approval_count: number;
+  completed_count: number;
+  failed_count: number;
+  total_tokens_used: number;
+  total_cost_usd: number;
+  provider_status: string;
+  active_model: string;
+  github_repo: string;
+  recent_executions: AITaskExecution[];
+}
+
+export interface AIEngineConfig {
+  provider: string;
+  default_model: string;
+  fast_model: string;
+  max_tokens_per_task: number;
+  max_budget_per_task_usd: number;
+  default_autonomy_level: number;
+  github_repo: string;
+  github_base_branch: string;
+  has_github_token: boolean;
+  has_gemini_key: boolean;
+  is_active: boolean;
+}
+
+

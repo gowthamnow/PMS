@@ -24,6 +24,9 @@ import {
   AIChatResponse,
   AIConfigInfo,
   BackupStatus,
+  AITaskExecution,
+  AIControlCenterStats,
+  AIEngineConfig,
 } from '../types';
 
 export const apiClient: AxiosInstance = axios.create({
@@ -432,6 +435,27 @@ export const api = {
       link.remove();
       window.URL.revokeObjectURL(url);
     },
+  },
+
+  aiOrchestrator: {
+    createExecution: (data: { task_id: string; autonomy_level?: number; model_override?: string; custom_instructions?: string }): Promise<AITaskExecution> =>
+      apiClient.post('/ai/orchestrator/executions', data),
+    getExecution: (executionId: string): Promise<AITaskExecution> =>
+      apiClient.get(`/ai/orchestrator/executions/${executionId}`),
+    getExecutionByTask: (taskId: string): Promise<AITaskExecution | null> =>
+      apiClient.get(`/ai/orchestrator/executions/task/${taskId}`),
+    approvePlan: (executionId: string, is_approved: boolean, feedback?: string): Promise<AITaskExecution> =>
+      apiClient.post(`/ai/orchestrator/executions/${executionId}/approve-plan`, { is_approved, feedback }),
+    cancelExecution: (executionId: string): Promise<AITaskExecution> =>
+      apiClient.post(`/ai/orchestrator/executions/${executionId}/cancel`),
+    retryExecution: (executionId: string): Promise<AITaskExecution> =>
+      apiClient.post(`/ai/orchestrator/executions/${executionId}/retry`),
+    getControlCenterStats: (): Promise<AIControlCenterStats> =>
+      apiClient.get('/ai/orchestrator/control-center'),
+    getConfig: (): Promise<AIEngineConfig> =>
+      apiClient.get('/ai/orchestrator/config'),
+    updateConfig: (data: Partial<AIEngineConfig & { github_token?: string; gemini_api_key?: string }>): Promise<AIEngineConfig> =>
+      apiClient.put('/ai/orchestrator/config', data),
   },
 };
 

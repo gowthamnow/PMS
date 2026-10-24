@@ -19,6 +19,7 @@ const TimesheetPage = lazy(() => import('./pages/TimesheetPage').then((m) => ({ 
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AIControlCenterPage = lazy(() => import('./pages/AIControlCenterPage').then((m) => ({ default: m.AIControlCenterPage })));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage').then((m) => ({ default: m.UsersPage })));
 const SystemPage = lazy(() => import('./pages/admin/SystemPage').then((m) => ({ default: m.SystemPage })));
 
@@ -139,7 +140,7 @@ export const App: React.FC = () => {
           <Route path="projects/:id/board" element={<TaskBoardPage />} />
           <Route path="tasks" element={<MyTasksPage />} />
           <Route path="tasks/:id" element={<TaskDetailPage />} />
-          <Route path="ai" element={<Navigate to="/dashboard" replace />} />
+          <Route path="ai" element={<AIControlCenterPage />} />
           <Route path="messages" element={<MessagesPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="timesheet" element={<TimesheetPage />} />

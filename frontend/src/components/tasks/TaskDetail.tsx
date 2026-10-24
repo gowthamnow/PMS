@@ -34,9 +34,12 @@ import {
   AlertTriangle,
   Mail,
   Sparkles,
+  Bot,
+  GitBranch,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AIAutoSolveModal } from '../ai/AIAutoSolveModal';
+import { AIExecutionDetailModal } from '../ai/AIExecutionDetailModal';
 
 export interface TaskDetailProps {
   taskId: string;
@@ -56,9 +59,42 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
   const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
   const [delayMessage, setDelayMessage] = useState('');
   const [isAISolveModalOpen, setIsAISolveModalOpen] = useState(false);
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
+  const [isLaunchingAIEngine, setIsLaunchingAIEngine] = useState(false);
 
   const isAdminOrManager = currentUser?.role === 'ADMIN' || currentUser?.role === 'PROJECT_MANAGER';
   const isAdmin = currentUser?.role === 'ADMIN';
+
+  // AI Orchestrator Execution Query
+  const { data: latestExecution } = useQuery({
+    queryKey: ['ai-task-execution', taskId],
+    queryFn: () => api.aiOrchestrator.getExecutionByTask(taskId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status && ['QUEUED', 'ANALYZING', 'IMPLEMENTING', 'TESTING'].includes(status)) {
+        return 3000;
+      }
+      return 15000;
+    },
+  });
+
+  const handleLaunchAIEngine = async () => {
+    try {
+      setIsLaunchingAIEngine(true);
+      const exec = await api.aiOrchestrator.createExecution({
+        task_id: taskId,
+        autonomy_level: 2,
+      });
+      setSelectedExecutionId(exec.id);
+      queryClient.invalidateQueries({ queryKey: ['ai-task-execution', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', taskId] });
+      toast.success(`Autonomous AI Engine dispatched for Task #${task?.task_number || ''}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to dispatch AI Engine');
+    } finally {
+      setIsLaunchingAIEngine(false);
+    }
+  };
 
   // 1. Fetch Task
   const {
@@ -236,6 +272,38 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Autonomous AI Engine Trigger / View */}
+          {latestExecution ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className={
+                latestExecution.status === 'WAITING_FOR_APPROVAL'
+                  ? 'bg-amber-500 text-white hover:bg-amber-600 border-amber-600 animate-pulse font-semibold shadow-xs'
+                  : latestExecution.status === 'COMPLETED' || latestExecution.status === 'REVIEW_READY'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 font-semibold'
+                  : 'bg-indigo-50 text-indigo-800 border-indigo-300 hover:bg-indigo-100 font-medium'
+              }
+              leftIcon={<Bot className="w-3.5 h-3.5" />}
+              onClick={() => setSelectedExecutionId(latestExecution.id)}
+              title="Inspect Autonomous AI Execution Lifecycle & Pipeline"
+            >
+              AI Engine: {latestExecution.status.replace(/_/g, ' ')}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              className="bg-slate-900 hover:bg-slate-800 text-white shadow-xs border-slate-800 font-medium"
+              leftIcon={<Bot className="w-3.5 h-3.5 text-amber-400" />}
+              onClick={handleLaunchAIEngine}
+              disabled={isLaunchingAIEngine}
+              title="Launch autonomous 10-agent pipeline to analyze, code, test, and open GitHub PR"
+            >
+              {isLaunchingAIEngine ? 'Launching Engine...' : 'Run with AI Engine'}
+            </Button>
+          )}
+
           <Button
             variant="primary"
             size="sm"
@@ -363,6 +431,73 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Autonomous AI Engine Execution Status Card */}
+          {latestExecution && (
+            <div className="rounded-lg border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-slate-50 p-4 shadow-2xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Bot className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-xs font-bold text-slate-900">
+                        Autonomous AI Development Engine
+                      </h4>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-semibold uppercase">
+                        {latestExecution.status.replace(/_/g, ' ')}
+                      </span>
+                      {latestExecution.selected_model && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                          {latestExecution.selected_model}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4 text-[11px] text-slate-600 mt-1 flex-wrap">
+                      {latestExecution.git_branch && (
+                        <span className="flex items-center gap-1 font-mono text-[10px] text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                          <GitBranch className="w-3 h-3 text-indigo-500" />
+                          {latestExecution.git_branch}
+                        </span>
+                      )}
+                      {latestExecution.github_pr_url && (
+                        <a
+                          href={latestExecution.github_pr_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium underline"
+                        >
+                          <GitPullRequest className="w-3 h-3" />
+                          PR #{latestExecution.github_pr_number || 'View PR'}
+                        </a>
+                      )}
+                      {latestExecution.tokens_used > 0 && (
+                        <span>
+                          Tokens: <strong className="text-slate-800">{latestExecution.tokens_used.toLocaleString()}</strong>
+                        </span>
+                      )}
+                      {latestExecution.estimated_cost_usd > 0 && (
+                        <span>
+                          Cost: <strong className="text-slate-800">${latestExecution.estimated_cost_usd.toFixed(4)}</strong>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="primary"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 shadow-xs"
+                  leftIcon={<Bot className="w-3.5 h-3.5" />}
+                  onClick={() => setSelectedExecutionId(latestExecution.id)}
+                >
+                  {latestExecution.status === 'WAITING_FOR_APPROVAL' ? 'Review & Approve Plan' : 'Inspect Pipeline'}
+                </Button>
+              </div>
             </div>
           )}
 
@@ -718,6 +853,18 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
         taskTitle={task.title}
         onCommentPosted={() => {
           queryClient.invalidateQueries({ queryKey: ['task-comments', task.id] });
+        }}
+      />
+
+      {/* Autonomous AI Engine Execution Modal */}
+      <AIExecutionDetailModal
+        executionId={selectedExecutionId}
+        isOpen={!!selectedExecutionId}
+        onClose={() => setSelectedExecutionId(null)}
+        onExecutionUpdated={() => {
+          queryClient.invalidateQueries({ queryKey: ['ai-task-execution', taskId] });
+          queryClient.invalidateQueries({ queryKey: ['tasks', taskId] });
+          queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
         }}
       />
     </div>

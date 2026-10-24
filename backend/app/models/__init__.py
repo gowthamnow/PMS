@@ -23,6 +23,18 @@ from app.models.task import (
 from app.models.time_entry import TimeEntry
 from app.models.user import User, UserRole
 from app.models.vault import ProjectFolder, ProjectVaultFile
+from app.models.ai_orchestrator import (
+    AIAgentRole,
+    AIAutonomyLevel,
+    AIEngineConfig,
+    AIExecutionStatus,
+    AIExecutionStep,
+    AIImplementationPlan,
+    AIProjectMemory,
+    AIStepStatus,
+    AITaskExecution,
+    AIToolInvocation,
+)
 
 __all__ = [
     "Workspace",
@@ -51,4 +63,14 @@ __all__ = [
     "AuditLog",
     "ProjectFolder",
     "ProjectVaultFile",
+    "AITaskExecution",
+    "AIExecutionStatus",
+    "AIAutonomyLevel",
+    "AIAgentRole",
+    "AIStepStatus",
+    "AIExecutionStep",
+    "AIImplementationPlan",
+    "AIToolInvocation",
+    "AIProjectMemory",
+    "AIEngineConfig",
 ]
