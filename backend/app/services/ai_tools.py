@@ -26,7 +26,13 @@ def resolve_safe_path(rel_path: str, base_dir: Optional[Path] = None) -> Path:
     neutralizing any directory traversal attempts (e.g. `../../etc/passwd`).
     """
     root = (base_dir or REPO_ROOT).resolve()
-    clean_rel = rel_path.strip().lstrip("/\\")
+    normalized = rel_path.replace("\\", "/").strip()
+
+    # Absolute paths are strictly forbidden
+    if normalized.startswith("/") or re.match(r"^[a-zA-Z]:", normalized):
+        raise ToolSecurityError(f"Access Denied: Absolute path '{rel_path}' is not permitted")
+
+    clean_rel = normalized.lstrip("/")
     target = (root / clean_rel).resolve()
 
     try:

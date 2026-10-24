@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_active_user, get_db, require_admin
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
-from app.database import async_session_maker
+from app.database import AsyncSessionLocal
 from app.models.ai_orchestrator import (
     AIEngineConfig,
     AIExecutionStatus,
@@ -42,7 +42,7 @@ router = APIRouter(prefix="/ai/orchestrator", tags=["AI Orchestrator Engine"])
 
 async def run_orchestrator_background(execution_id: uuid.UUID):
     """Executes the orchestrator lifecycle asynchronously in a dedicated database session."""
-    async with async_session_maker() as db:
+    async with AsyncSessionLocal() as db:
         try:
             orchestrator = AIOrchestrator(db, execution_id)
             initialized = await orchestrator.initialize()

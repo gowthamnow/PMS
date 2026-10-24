@@ -69,6 +69,8 @@ class AIExecutionCreateRequest(BaseModel):
     model_override: Optional[str] = None
     custom_instructions: Optional[str] = None
 
+    model_config = ConfigDict(protected_namespaces=())
+
 
 class AIPlanApprovalRequest(BaseModel):
     is_approved: bool

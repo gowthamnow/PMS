@@ -5,7 +5,6 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ValidationError
 from app.models.ai_orchestrator import (
     AIEngineConfig,
     AIExecutionStatus,
@@ -15,14 +14,13 @@ from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
 from app.services.ai_tools import (
-    APPROVED_VERIFICATION_COMMANDS,
+    AIToolExecutionLayer,
+    ToolSecurityError,
     resolve_safe_path,
-    run_approved_check,
 )
 from app.services.ai_model_router import (
-    ModelRouter,
-    PMS_FALLBACK_ANALYSIS,
-    PMS_FALLBACK_PLAN,
+    AIModelRouter,
+    AIModelResponse,
 )
 
 
@@ -32,39 +30,38 @@ from app.services.ai_model_router import (
 
 def test_resolve_safe_path_valid():
     """Verifies that legitimate in-repo paths resolve correctly within workspace boundaries."""
-    repo_root = Path(__file__).resolve().parent.parent.parent
-    safe_path = resolve_safe_path("backend/app/main.py", repo_root)
+    repo_root = Path(__file__).resolve().parent.parent
+    safe_path = resolve_safe_path("app/main.py", repo_root)
     assert safe_path.exists()
     assert str(safe_path).startswith(str(repo_root))
 
 
 def test_resolve_safe_path_traversal_blocked():
     """Verifies that directory traversal attacks are blocked by strict validation."""
-    repo_root = Path(__file__).resolve().parent.parent.parent
+    repo_root = Path(__file__).resolve().parent.parent
     
-    with pytest.raises(ValidationError):
+    with pytest.raises(ToolSecurityError):
         resolve_safe_path("../../etc/passwd", repo_root)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ToolSecurityError):
         resolve_safe_path("..\\..\\Windows\\System32\\cmd.exe", repo_root)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ToolSecurityError):
         resolve_safe_path("/root/.ssh/id_rsa", repo_root)
 
 
 def test_approved_commands_allowlist():
     """Verifies that only strictly allowlisted verification checks are permitted."""
-    allowed = list(APPROVED_VERIFICATION_COMMANDS.keys())
-    assert "frontend_build" in allowed
-    assert "frontend_typecheck" in allowed
-    assert "backend_syntax" in allowed
-    assert "backend_pytest" in allowed
+    tools = AIToolExecutionLayer()
+    
+    # Arbitrary command must be rejected
+    res_bad = tools.run_approved_check("arbitrary_bash_command")
+    assert res_bad["is_success"] is False
+    assert "not in the authorized safety allowlist" in res_bad["output"]
 
-    with pytest.raises(ValidationError):
-        run_approved_check("arbitrary_bash_command")
-
-    with pytest.raises(ValidationError):
-        run_approved_check("rm -rf /")
+    res_rm = tools.run_approved_check("rm -rf /")
+    assert res_rm["is_success"] is False
+    assert "not in the authorized safety allowlist" in res_rm["output"]
 
 
 # =====================================================================
@@ -72,29 +69,30 @@ def test_approved_commands_allowlist():
 # =====================================================================
 
 def test_model_router_selection():
-    """Verifies dynamic model routing based on task complexity and reasoning requirements."""
-    router = ModelRouter()
+    """Verifies dynamic model routing based on agent role and task priority."""
+    router = AIModelRouter()
     
     # Complex planning should route to Gemini 1.5 Pro
-    complex_model = router.route_model(task_complexity="CRITICAL", requires_reasoning=True)
+    complex_model = router.select_model(agent_role="PLANNING_AGENT", task_priority="CRITICAL")
     assert "pro" in complex_model
 
     # Lightweight triage should route to Gemini 1.5 Flash
-    fast_model = router.route_model(task_complexity="LOW", requires_reasoning=False)
+    fast_model = router.select_model(agent_role="DEVOPS_AGENT", task_priority="LOW")
     assert "flash" in fast_model
 
 
-def test_model_router_fallback_data():
+@pytest.mark.asyncio
+async def test_model_router_fallback():
     """Verifies deterministic expert fallback data is valid and structured."""
-    router = ModelRouter()
-    analysis = router.get_fallback_analysis("Fix broken button in task board", "Button does not respond to clicks")
-    assert "problem_statement" in analysis
-    assert "risk_level" in analysis
-    assert analysis["risk_level"] in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
-
-    plan = router.get_fallback_plan("Fix broken button", analysis)
-    assert "steps" in plan
-    assert len(plan["steps"]) >= 1
+    router = AIModelRouter(api_key="")
+    resp = await router.execute_prompt("Analyze task specifications and requirements")
+    assert resp.is_fallback is True
+    assert resp.provider == "Engineering PMS Expert Diagnostic Engine"
+    assert "problem_statement" in resp.structured_data
+    assert "risk_level" in resp.structured_data
+    assert resp.structured_data["risk_level"] in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    assert len(resp.structured_data["planned_steps"]) >= 1
+    assert resp.total_tokens > 0
 
 
 # =====================================================================
