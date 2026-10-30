@@ -306,19 +306,10 @@ export const LoginPage: React.FC = () => {
           </Button>
         </form>
 
-        {/* Quick Testing Credentials */}
+        {/* Security Notice */}
         <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col gap-1.5 text-center">
-          <span className="text-[11px] font-semibold text-slate-700">Quick Testing Credentials:</span>
-          <div className="flex flex-wrap items-center justify-center gap-1.5 text-[10px]">
-            <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
-              Admin: <strong>admin</strong> / <strong>AdminEng2026#Secure</strong>
-            </span>
-            <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
-              Engineer: <strong>engineer</strong> / <strong>Engineer2026#Secure</strong>
-            </span>
-          </div>
-          <span className="text-[10px] text-slate-500 mt-1">
-            New Google users will wait in the Lobby until approved by Gowtham.
+          <span className="text-[10px] text-slate-500">
+            Authorized engineering personnel only. New Google users will wait in the Lobby until approved by Gowtham.
           </span>
         </div>
       </div>
