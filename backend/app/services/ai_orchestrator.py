@@ -399,6 +399,14 @@ Respond in exact JSON format:
                 "description": f"Applied verified patch for #{self.task.task_number}",
                 "code_patch": "",
             }
+            if patch_data.get("code_patch") and len(patch_data["code_patch"].strip()) > 10:
+                t_write = time.time()
+                write_res = self.tools.create_or_update_file(target_file, patch_data["code_patch"])
+                await self.record_tool_call(
+                    AIAgentRole.FRONTEND_CODING_AGENT, "create_or_update_file", {"path": target_file},
+                    f"Wrote {write_res.get('bytes_written', 0)} bytes to {target_file}",
+                    duration_ms=int((time.time() - t_write) * 1000)
+                )
             patches_applied.append(patch_data)
 
         dur = round(time.time() - start_t, 2)
