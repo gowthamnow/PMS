@@ -296,6 +296,8 @@ async def retry_execution(
     execution.retry_count += 1
     execution.error_message = None
     execution.completed_at = None
+    execution.created_at = datetime.now(timezone.utc)
+    execution.duration_seconds = 0.0
     await db.commit()
 
     background_tasks.add_task(run_orchestrator_background, execution.id)

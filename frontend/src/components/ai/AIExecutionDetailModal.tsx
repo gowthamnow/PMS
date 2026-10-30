@@ -256,6 +256,32 @@ export const AIExecutionDetailModal: React.FC<AIExecutionDetailModalProps> = ({
             </div>
           )}
 
+          {/* Failure Alert Banner */}
+          {execution.status === 'FAILED' && (
+            <div className="p-4 rounded-lg bg-red-50 border border-red-200 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-bold text-red-900">
+                    AI Execution Failed
+                  </h4>
+                  <p className="text-xs text-red-700 mt-0.5 font-mono">
+                    {execution.error_message || 'An error occurred during agent execution. You can retry the pipeline now.'}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                leftIcon={<RotateCcw className="w-4 h-4" />}
+                isLoading={retryMutation.isPending}
+                onClick={() => retryMutation.mutate()}
+              >
+                Retry Execution
+              </Button>
+            </div>
+          )}
+
           {/* Navigation Tabs */}
           <div className="flex items-center gap-2 border-b border-border pb-1">
             <button

@@ -235,25 +235,29 @@ class AIToolExecutionLayer:
         Executes an approved, allowlisted build/test verification command.
         Strict allowlist prevents command injection.
         """
+        main_py = "backend/app/main.py" if (self.workspace_dir / "backend/app/main.py").exists() else "app/main.py"
+        tests_dir = "tests/" if (self.workspace_dir / "tests").exists() else "backend/tests/"
+        frontend_dir = self.workspace_dir / "frontend" if (self.workspace_dir / "frontend").exists() else self.workspace_dir
+
         ALLOWED_CHECKS = {
             "frontend_build": {
                 "cmd": ["npm", "run", "build"],
-                "cwd": self.workspace_dir / "frontend",
+                "cwd": frontend_dir,
                 "timeout": 90,
             },
             "frontend_typecheck": {
                 "cmd": ["npx", "tsc", "--noEmit"],
-                "cwd": self.workspace_dir / "frontend",
+                "cwd": frontend_dir,
                 "timeout": 60,
             },
             "backend_syntax": {
-                "cmd": ["python", "-m", "py_compile", "backend/app/main.py"],
+                "cmd": ["python", "-m", "py_compile", main_py],
                 "cwd": self.workspace_dir,
                 "timeout": 30,
             },
             "backend_pytest": {
-                "cmd": ["python", "-m", "pytest", "tests/"],
-                "cwd": self.workspace_dir / "backend",
+                "cmd": ["python", "-m", "pytest", tests_dir],
+                "cwd": self.workspace_dir,
                 "timeout": 90,
             },
         }
