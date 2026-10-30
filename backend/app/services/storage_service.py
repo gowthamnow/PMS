@@ -58,8 +58,11 @@ def validate_file_content_type(header_bytes: bytes, declared_content_type: str) 
     if detected_mime and declared_content_type:
         cat_detected = detected_mime.split("/")[0]
         cat_declared = declared_content_type.split("/")[0]
+        # Allow cross-matching between text and application (e.g. text/csv vs application/vnd.ms-excel, text/plain vs application/json)
+        compatible_text_app = {cat_detected, cat_declared} <= {"text", "application"}
         if (
             cat_detected != cat_declared
+            and not compatible_text_app
             and declared_content_type != "application/octet-stream"
             and detected_mime != declared_content_type
         ):
@@ -70,7 +73,7 @@ def validate_file_content_type(header_bytes: bytes, declared_content_type: str) 
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {
     "pdf", "png", "jpg", "jpeg", "webp", "gif", "zip", "tar", "gz",
-    "csv", "txt", "docx", "xlsx", "pptx", "bin", "hex",
+    "csv", "txt", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "bin", "hex",
     "kicad_sch", "kicad_pcb", "gerber", "gbr", "step", "stp", "stl", "json", "md"
 }
 

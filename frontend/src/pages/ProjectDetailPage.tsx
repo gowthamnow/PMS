@@ -216,6 +216,21 @@ export const ProjectDetailPage: React.FC = () => {
     onError: () => toast.error('Failed to upload file'),
   });
 
+  // Task Delete Mutation for Admin
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const deleteTaskMutation = useMutation({
+    mutationFn: (taskId: string) => api.tasks.deleteTask(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['projects', id, 'stats'] });
+      setTaskToDelete(null);
+      toast.success('Task deleted successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to delete task');
+    },
+  });
+
   // Project Document Delete Mutation
   const deleteFileMutation = useMutation({
     mutationFn: (attId: string) => api.attachments.deleteAttachment(attId),
@@ -297,8 +312,11 @@ export const ProjectDetailPage: React.FC = () => {
     },
   ];
 
-  const totalTasks = stats?.total_tasks || project.task_count || 0;
-  const doneTasks = stats?.completed_tasks || project.completed_task_count || 0;
+  const projectTasksList = tasksData?.items || [];
+  const liveTotal = stats?.total_tasks ?? tasksData?.total ?? projectTasksList.length;
+  const liveDone = stats?.completed_tasks ?? projectTasksList.filter((t) => t.status === 'DONE').length;
+  const totalTasks = liveTotal;
+  const doneTasks = liveDone;
   const progressPercent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   return (
@@ -541,7 +559,7 @@ export const ProjectDetailPage: React.FC = () => {
                 Hours Invested
               </h4>
               <span className="font-mono text-2xl font-bold text-copper-700">
-                {stats?.total_hours || 0}h
+                {stats?.total_hours_logged ?? stats?.total_hours ?? 0}h
               </span>
               <p className="text-[11px] text-text-muted">Total logged across all engineering tasks</p>
             </div>
@@ -595,6 +613,7 @@ export const ProjectDetailPage: React.FC = () => {
                         key={task.id}
                         task={task}
                         onClick={(t) => navigate(`/tasks/${t.id}`)}
+                        onDelete={isAdmin ? (t) => setTaskToDelete(t) : undefined}
                       />
                     ))
                   )}
@@ -824,6 +843,48 @@ export const ProjectDetailPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+            {/* Delete Task Confirmation Modal */}
+      {taskToDelete && (
+        <Modal
+          isOpen={!!taskToDelete}
+          onClose={() => setTaskToDelete(null)}
+          title="Delete Task Confirmation"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setTaskToDelete(null)}
+                disabled={deleteTaskMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                isLoading={deleteTaskMutation.isPending}
+                onClick={() => taskToDelete && deleteTaskMutation.mutate(taskToDelete.id)}
+              >
+                Permanently Delete
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-slate-700">
+              Are you sure you want to permanently delete task{' '}
+              <strong className="text-slate-900 font-mono">
+                #ENG-{taskToDelete.task_number ? taskToDelete.task_number.toString().padStart(3, '0') : ''}
+              </strong>{' '}
+              - <strong>{taskToDelete.title}</strong>?
+            </p>
+            <p className="text-[11px] text-red-600 font-medium">
+              This action cannot be undone and will remove this task from all sprint boards, project metrics, and timesheets.
+            </p>
+          </div>
+        </Modal>
+      )}
 
       {/* Delete Project Confirmation Modal */}
       {isAdmin && (

@@ -105,5 +105,6 @@ class ProjectStatsResponse(BaseModel):
     completion_percentage: float
     tasks_by_status: dict[str, int]
     total_hours_logged: float
+    total_hours: Optional[float] = 0.0
 
     model_config = ConfigDict(from_attributes=True)

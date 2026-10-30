@@ -125,9 +125,7 @@ export const api = {
     uploadAvatar: (file: File): Promise<{ avatar_url: string; message: string }> => {
       const formData = new FormData();
       formData.append('file', file);
-      return apiClient.post('/users/me/avatar', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return apiClient.post('/users/me/avatar', formData);
     },
     resetPassword: (id: string, newPassword?: string): Promise<any> =>
       apiClient.post(`/users/${id}/reset-password`, {
@@ -180,9 +178,7 @@ export const api = {
     uploadProjectImage: (projectId: string, file: File): Promise<any> => {
       const formData = new FormData();
       formData.append('file', file);
-      return apiClient.post(`/projects/${projectId}/image`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return apiClient.post(`/projects/${projectId}/image`, formData);
     },
   },
 
@@ -259,9 +255,7 @@ export const api = {
           formData.append('project_id', (target.projectId || target.project_id)!);
         }
       }
-      return apiClient.post('/attachments/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return apiClient.post('/attachments/upload', formData);
     },
     deleteAttachment: (id: string): Promise<any> => apiClient.delete(`/attachments/${id}`),
     downloadAttachment: async (id: string, filename?: string): Promise<Blob> => {
@@ -399,9 +393,7 @@ export const api = {
       if (folderId) formData.append('folder_id', folderId);
       if (category) formData.append('category', category);
       if (description) formData.append('description', description);
-      return apiClient.post(`/projects/${projectId}/vault-files`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return apiClient.post(`/projects/${projectId}/vault-files`, formData);
     },
     downloadFile: async (fileId: string, filename: string): Promise<void> => {
       const res = await apiClient.get(`/vault/files/${fileId}/download`, { responseType: 'blob' });

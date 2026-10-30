@@ -38,8 +38,6 @@ import {
   GitBranch,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { AIAutoSolveModal } from '../ai/AIAutoSolveModal';
-import { AIExecutionDetailModal } from '../ai/AIExecutionDetailModal';
 
 export interface TaskDetailProps {
   taskId: string;
@@ -58,43 +56,11 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
   const [isUploading, setIsUploading] = useState(false);
   const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
   const [delayMessage, setDelayMessage] = useState('');
-  const [isAISolveModalOpen, setIsAISolveModalOpen] = useState(false);
-  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
-  const [isLaunchingAIEngine, setIsLaunchingAIEngine] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const isAdminOrManager = currentUser?.role === 'ADMIN' || currentUser?.role === 'PROJECT_MANAGER';
   const isAdmin = currentUser?.role === 'ADMIN';
 
-  // AI Orchestrator Execution Query
-  const { data: latestExecution } = useQuery({
-    queryKey: ['ai-task-execution', taskId],
-    queryFn: () => api.aiOrchestrator.getExecutionByTask(taskId),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (status && ['QUEUED', 'ANALYZING', 'IMPLEMENTING', 'TESTING'].includes(status)) {
-        return 3000;
-      }
-      return 15000;
-    },
-  });
-
-  const handleLaunchAIEngine = async () => {
-    try {
-      setIsLaunchingAIEngine(true);
-      const exec = await api.aiOrchestrator.createExecution({
-        task_id: taskId,
-        autonomy_level: 2,
-      });
-      setSelectedExecutionId(exec.id);
-      queryClient.invalidateQueries({ queryKey: ['ai-task-execution', taskId] });
-      queryClient.invalidateQueries({ queryKey: ['tasks', taskId] });
-      toast.success(`Autonomous AI Engine dispatched for Task #${task?.task_number || ''}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to dispatch AI Engine');
-    } finally {
-      setIsLaunchingAIEngine(false);
-    }
-  };
 
   // 1. Fetch Task
   const {
@@ -174,12 +140,29 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
     },
   });
 
+  // Delete Task Mutation (Admin Only)
+  const deleteTaskMutation = useMutation({
+    mutationFn: () => api.tasks.deleteTask(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Task deleted successfully');
+      setIsDeleteModalOpen(false);
+      if (onClose) onClose();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to delete task');
+    },
+  });
+
   // Status Change Mutation
   const statusMutation = useMutation({
     mutationFn: (newStatus: TaskStatus) => api.tasks.updateTaskStatus(taskId, newStatus),
     onSuccess: (updated, newStatus) => {
       queryClient.setQueryData(['tasks', taskId], updated);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       toast.success(`Status updated to ${newStatus}`);
     },
   });
@@ -272,48 +255,18 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Autonomous AI Engine Trigger / View */}
-          {latestExecution ? (
+          {/* Task Delete Option (Admin Only) */}
+          {isAdmin && (
             <Button
-              variant="outline"
+              variant="danger"
               size="sm"
-              className={
-                latestExecution.status === 'WAITING_FOR_APPROVAL'
-                  ? 'bg-amber-500 text-white hover:bg-amber-600 border-amber-600 animate-pulse font-semibold shadow-xs'
-                  : latestExecution.status === 'COMPLETED' || latestExecution.status === 'REVIEW_READY'
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 font-semibold'
-                  : 'bg-indigo-50 text-indigo-800 border-indigo-300 hover:bg-indigo-100 font-medium'
-              }
-              leftIcon={<Bot className="w-3.5 h-3.5" />}
-              onClick={() => setSelectedExecutionId(latestExecution.id)}
-              title="Inspect Autonomous AI Execution Lifecycle & Pipeline"
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={() => setIsDeleteModalOpen(true)}
+              title="Permanently Delete Task (Admin Only)"
             >
-              AI Engine: {latestExecution.status.replace(/_/g, ' ')}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              className="bg-slate-900 hover:bg-slate-800 text-white shadow-xs border-slate-800 font-medium"
-              leftIcon={<Bot className="w-3.5 h-3.5 text-amber-400" />}
-              onClick={handleLaunchAIEngine}
-              disabled={isLaunchingAIEngine}
-              title="Launch autonomous 10-agent pipeline to analyze, code, test, and open GitHub PR"
-            >
-              {isLaunchingAIEngine ? 'Launching Engine...' : 'Run with AI Engine'}
+              Delete Task
             </Button>
           )}
-
-          <Button
-            variant="primary"
-            size="sm"
-            className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-xs border-amber-600"
-            leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-            onClick={() => setIsAISolveModalOpen(true)}
-            title="Auto-solve this bug or task with Google Gemini AI"
-          >
-            AI Auto-Solve Bug
-          </Button>
 
           {isAdminOrManager && task.assignee && (
             <Button
@@ -360,146 +313,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
               </p>
             )}
           </div>
-
-          {/* AI Autonomous Status Banner */}
-          {task.assignee?.username === 'ai_engineer' && (
-            <div className="rounded-lg border overflow-hidden shadow-2xs">
-              {task.status === 'TODO' && (
-                <div className="bg-amber-50/80 border-amber-300 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
-                      <Sparkles className="w-4 h-4 animate-pulse" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                        Assigned to Gemini AI Engineer
-                        <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded font-normal">
-                          Queued / Waiting to Run
-                        </span>
-                      </h4>
-                      <p className="text-[11px] text-amber-800/90 mt-0.5">
-                        Click &quot;AI Auto-Solve Bug&quot; above or run the background worker to synthesize the fix and push to Git.
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 shadow-xs"
-                    leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-                    onClick={() => setIsAISolveModalOpen(true)}
-                  >
-                    Solve Bug Now
-                  </Button>
-                </div>
-              )}
-
-              {task.status === 'IN_PROGRESS' && (
-                <div className="bg-blue-50/80 border-blue-300 p-3.5 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-700 flex items-center justify-center shrink-0">
-                    <Spinner size="sm" className="text-blue-600" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
-                      Gemini AI Engineer is Actively Working
-                      <span className="text-[10px] bg-blue-200 text-blue-900 px-1.5 py-0.2 rounded font-normal">
-                        In Progress
-                      </span>
-                    </h4>
-                    <p className="text-[11px] text-blue-800/90 mt-0.5">
-                      Diagnosing root cause, formulating code patches, and preparing production build verification.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {task.status === 'DONE' && (
-                <div className="bg-emerald-50/80 border-emerald-300 p-3.5 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-700 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                      Resolved by Gemini AI Engineer
-                      <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 rounded font-normal">
-                        Completed &amp; Pushed
-                      </span>
-                    </h4>
-                    <p className="text-[11px] text-emerald-800/90 mt-0.5">
-                      Solution report, technical diagnostics, and verification details are logged in Bench Notes &amp; Updates below.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Autonomous AI Engine Execution Status Card */}
-          {latestExecution && (
-            <div className="rounded-lg border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-slate-50 p-4 shadow-2xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                    <Bot className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-xs font-bold text-slate-900">
-                        Autonomous AI Development Engine
-                      </h4>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-semibold uppercase">
-                        {latestExecution.status.replace(/_/g, ' ')}
-                      </span>
-                      {latestExecution.selected_model && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
-                          {latestExecution.selected_model}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-4 text-[11px] text-slate-600 mt-1 flex-wrap">
-                      {latestExecution.git_branch && (
-                        <span className="flex items-center gap-1 font-mono text-[10px] text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
-                          <GitBranch className="w-3 h-3 text-indigo-500" />
-                          {latestExecution.git_branch}
-                        </span>
-                      )}
-                      {latestExecution.github_pr_url && (
-                        <a
-                          href={latestExecution.github_pr_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium underline"
-                        >
-                          <GitPullRequest className="w-3 h-3" />
-                          PR #{latestExecution.github_pr_number || 'View PR'}
-                        </a>
-                      )}
-                      {latestExecution.tokens_used > 0 && (
-                        <span>
-                          Tokens: <strong className="text-slate-800">{latestExecution.tokens_used.toLocaleString()}</strong>
-                        </span>
-                      )}
-                      {latestExecution.estimated_cost_usd > 0 && (
-                        <span>
-                          Cost: <strong className="text-slate-800">${latestExecution.estimated_cost_usd.toFixed(4)}</strong>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <Button
-                  size="sm"
-                  variant="primary"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 shadow-xs"
-                  leftIcon={<Bot className="w-3.5 h-3.5" />}
-                  onClick={() => setSelectedExecutionId(latestExecution.id)}
-                >
-                  {latestExecution.status === 'WAITING_FOR_APPROVAL' ? 'Review & Approve Plan' : 'Inspect Pipeline'}
-                </Button>
-              </div>
-            </div>
-          )}
 
           {/* Description */}
           <div className="flex flex-col gap-1.5">
@@ -844,29 +657,47 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ taskId, onEdit, onClose 
           </div>
         </Modal>
       )}
-
-      {/* AI Auto-Solve Bug Modal */}
-      <AIAutoSolveModal
-        isOpen={isAISolveModalOpen}
-        onClose={() => setIsAISolveModalOpen(false)}
-        taskId={task.id}
-        taskTitle={task.title}
-        onCommentPosted={() => {
-          queryClient.invalidateQueries({ queryKey: ['task-comments', task.id] });
-        }}
-      />
-
-      {/* Autonomous AI Engine Execution Modal */}
-      <AIExecutionDetailModal
-        executionId={selectedExecutionId}
-        isOpen={!!selectedExecutionId}
-        onClose={() => setSelectedExecutionId(null)}
-        onExecutionUpdated={() => {
-          queryClient.invalidateQueries({ queryKey: ['ai-task-execution', taskId] });
-          queryClient.invalidateQueries({ queryKey: ['tasks', taskId] });
-          queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
-        }}
-      />
+      {/* Delete Task Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+          title="Delete Task Confirmation"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={deleteTaskMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                isLoading={deleteTaskMutation.isPending}
+                onClick={() => deleteTaskMutation.mutate()}
+              >
+                Permanently Delete
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-slate-700">
+              Are you sure you want to permanently delete task{' '}
+              <strong className="text-slate-900 font-mono">
+                #ENG-{task.task_number ? task.task_number.toString().padStart(3, '0') : ''}
+              </strong>{' '}
+              - <strong>{task.title}</strong>?
+            </p>
+            <p className="text-[11px] text-red-600 font-medium">
+              This action is restricted to administrators and will permanently remove this task from all sprint boards, project metrics, and timesheets.
+            </p>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

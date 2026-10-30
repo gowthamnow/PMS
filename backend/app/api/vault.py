@@ -291,15 +291,19 @@ async def upload_vault_file(
     clean_filename = os.path.basename(file.filename or "uploaded_file")
     ext = clean_filename.split(".")[-1].lower() if "." in clean_filename else ""
 
-    # Auto-categorize if default 'extra' was passed
-    cat_val = category.lower() if category else "extra"
-    if cat_val == "extra":
-        if ext in ["pdf", "doc", "docx", "txt", "md"]:
+    # Use user-specified category if provided; only infer if omitted
+    cat_val = category.lower() if category and category.lower() not in ("", "all") else ""
+    if not cat_val:
+        if "calc" in clean_filename.lower() or "report" in clean_filename.lower():
+            cat_val = "extra"
+        elif ext in ["pdf", "doc", "docx", "txt", "md"]:
             cat_val = "datasheet"
         elif ext in ["sch", "kicad_sch", "brd", "kicad_pcb", "step", "stp", "gerber", "gbr"]:
             cat_val = "design"
         elif ext in ["c", "h", "cpp", "hpp", "ino", "py", "rs", "hex", "bin", "elf"]:
             cat_val = "code"
+        else:
+            cat_val = "extra"
 
     # Store file on disk
     vault_dir = os.path.join(settings.ATTACHMENT_STORAGE_PATH, "vault", str(project_id))

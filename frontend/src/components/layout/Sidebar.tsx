@@ -16,7 +16,6 @@ import {
   Settings2,
   ChevronLeft,
   ChevronRight,
-  Bot,
   Sparkles,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -52,7 +51,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggleCollapse 
     { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
     { label: 'Projects', icon: FolderOpen, href: '/projects' },
     { label: 'Tasks', icon: CheckSquare, href: '/tasks' },
-    { label: 'AI Engine', icon: Bot, href: '/ai', badgeText: 'AUTONOMOUS' },
     { label: 'Messages', icon: MessageSquare, href: '/messages' },
     { label: 'Team', icon: Users, href: '/team' },
     { label: 'Timesheet', icon: Clock, href: '/timesheet' },

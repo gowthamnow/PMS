@@ -512,10 +512,10 @@ async def get_project_stats(
     member: ProjectMember = Depends(get_project_member),
     db: AsyncSession = Depends(get_db),
 ):
-    # Total tasks & tasks by status
+    # Total tasks & tasks by status (exclude soft-deleted tasks)
     status_stmt = (
         select(Task.status, func.count(Task.id))
-        .where(Task.project_id == project_id)
+        .where(Task.project_id == project_id, Task.is_deleted == False)
         .group_by(Task.status)
     )
     status_res = await db.execute(status_stmt)
@@ -546,6 +546,7 @@ async def get_project_stats(
         completion_percentage=completion_percentage,
         tasks_by_status=tasks_by_status,
         total_hours_logged=total_hours_logged,
+        total_hours=total_hours_logged,
     )
 
 

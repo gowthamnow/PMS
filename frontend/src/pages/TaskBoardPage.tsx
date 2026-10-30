@@ -183,6 +183,7 @@ export const TaskBoardPage: React.FC = () => {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'stats'] });
     },
   });

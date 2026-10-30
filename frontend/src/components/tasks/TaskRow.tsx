@@ -3,6 +3,7 @@ import { Task } from '../../types';
 import { StatusBadge } from './StatusBadge';
 import { PriorityBadge } from './PriorityBadge';
 import { Avatar } from '../ui/Avatar';
+import { Trash2 } from 'lucide-react';
 import { formatDate, isOverdue, formatDuration, cn } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 
@@ -11,6 +12,7 @@ export interface TaskRowProps {
   isSelected?: boolean;
   onSelectChange?: (selected: boolean) => void;
   onClick?: (task: Task) => void;
+  onDelete?: (task: Task) => void;
 }
 
 export const TaskRow: React.FC<TaskRowProps> = ({
@@ -18,6 +20,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
   isSelected = false,
   onSelectChange,
   onClick,
+  onDelete,
 }) => {
   const navigate = useNavigate();
   const overdue = isOverdue(task.due_date, task.status);
@@ -103,6 +106,23 @@ export const TaskRow: React.FC<TaskRowProps> = ({
           {task.estimated_hours ? formatDuration(task.estimated_hours) : '—'}
         </span>
       </td>
+      {onDelete && (
+        <td
+          className="w-12 px-3 py-3 text-center whitespace-nowrap"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(task);
+          }}
+        >
+          <button
+            type="button"
+            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+            title="Delete Task (Admin)"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </td>
+      )}
     </tr>
   );
 };
